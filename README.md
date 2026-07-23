@@ -42,3 +42,7 @@ npm run dev
 - OpenAI 기반 글 생성
 - 콘텐츠 저장·목록·게시 이력 데이터 연동
 - 예약 발행 및 이미지 업로드
+
+## Deployment
+
+This project is deployed through Vercel from the `main` branch.
