@@ -35,12 +35,23 @@ npm run dev
 - 역할 기반 관리자 화면(`profiles.role = admin`)
 - 대시보드, 새 콘텐츠 작성, 네이버 연결 설정의 기반 UI
 
+## 콘텐츠 초안 Migration 실행
+
+`content_drafts` 테이블과 RLS 정책은 실제 Supabase 프로젝트에 아직 적용되지 않았습니다. 대표자가 아래 순서로 직접 검토·실행합니다.
+
+1. [supabase/migrations/20260727_create_content_drafts.sql](supabase/migrations/20260727_create_content_drafts.sql) 파일 전체를 검토합니다.
+2. Supabase Dashboard에서 대상 프로젝트의 SQL Editor를 엽니다.
+3. 파일의 SQL 전체를 붙여 넣고 실행합니다.
+4. Table Editor에서 `content_drafts` 테이블과 RLS 활성화 여부를 확인합니다.
+5. admin과 editor 계정으로 각각 로그인해 초안 작성·목록 권한을 확인합니다.
+
+이 저장소는 SQL 파일만 제공합니다. 애플리케이션이 Supabase Dashboard나 데이터베이스에 자동으로 변경을 적용하지 않습니다.
+
 ## 아직 미구현인 기능
 
 - 실제 네이버 OAuth 및 네이버 카페 글쓰기
 - Naver Search API 호출
 - OpenAI 기반 글 생성
-- 콘텐츠 저장·목록·게시 이력 데이터 연동
 - 예약 발행 및 이미지 업로드
 
 ## Deployment

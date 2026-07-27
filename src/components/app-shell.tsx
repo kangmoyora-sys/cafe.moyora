@@ -14,6 +14,7 @@ export function AppShell({ children, email, title, description }: AppShellProps)
       <div className="mx-auto max-w-6xl px-6 py-10">
         <nav className="mb-8 flex flex-wrap gap-2 text-sm text-stone-600">
           <Link className="rounded-md px-3 py-2 hover:bg-stone-200" href="/dashboard">대시보드</Link>
+          <Link className="rounded-md px-3 py-2 hover:bg-stone-200" href="/content">내 초안</Link>
           <Link className="rounded-md px-3 py-2 hover:bg-stone-200" href="/content/new">새 콘텐츠</Link>
           <Link className="rounded-md px-3 py-2 hover:bg-stone-200" href="/settings/naver">네이버 연결</Link>
           <Link className="rounded-md px-3 py-2 hover:bg-stone-200" href="/admin">관리자</Link>
