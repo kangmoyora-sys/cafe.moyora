@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoutButton } from "@/components/logout-button";
 
 type AppShellProps = { children: React.ReactNode; email: string; title: string; description?: string };
 
@@ -8,7 +9,10 @@ export function AppShell({ children, email, title, description }: AppShellProps)
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/dashboard" className="font-bold text-stone-900">모여라 카페 콘텐츠센터</Link>
-          <span className="text-sm text-stone-500">{email}</span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-stone-500">{email}</span>
+            <LogoutButton />
+          </div>
         </div>
       </header>
       <div className="mx-auto max-w-6xl px-6 py-10">
