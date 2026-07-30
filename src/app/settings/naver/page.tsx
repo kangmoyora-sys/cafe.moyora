@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { getCurrentUserRole } from "@/lib/auth";
 import {
-  getNaverOAuthConfig,
   isNaverOAuthTokenExpired,
   naverOAuthConfigurationMessage,
 } from "@/lib/naver-oauth";
@@ -20,13 +19,13 @@ export default async function NaverSettingsPage({ searchParams }: { searchParams
   if (current.role !== "admin") redirect("/dashboard?notice=admin-only");
 
   const [params, supabase] = await Promise.all([searchParams, createClient()]);
-  const oauthConnectionReady = Boolean(getNaverOAuthConfig());
   const oauthSettings = [
     ["NAVER_CLIENT_ID", Boolean(process.env.NAVER_CLIENT_ID)],
     ["NAVER_CLIENT_SECRET", Boolean(process.env.NAVER_CLIENT_SECRET)],
     ["NAVER_CALLBACK_URL", Boolean(process.env.NAVER_CALLBACK_URL)],
     ["NAVER_TOKEN_ENCRYPTION_KEY", Boolean(process.env.NAVER_TOKEN_ENCRYPTION_KEY)],
   ] as const;
+  const oauthConnectionReady = oauthSettings.every(([, configured]) => configured);
   const cafeTargetSettings = [
     ["NAVER_CAFE_CLUB_ID", Boolean(process.env.NAVER_CAFE_CLUB_ID)],
     ["NAVER_CAFE_MENU_ID", Boolean(process.env.NAVER_CAFE_MENU_ID)],
@@ -47,8 +46,8 @@ export default async function NaverSettingsPage({ searchParams }: { searchParams
   return <AppShell email={current.user.email ?? "관리자"} title="네이버 카페 연동" description="관리자 전용 연결 상태를 확인합니다.">
     <div className="max-w-2xl space-y-6">
       {notice && <p className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p>}
-      <section className="rounded-xl border border-stone-200 bg-white p-7"><p className="text-lg font-bold">{statusMessage}</p><p className="mt-2 text-sm text-stone-600">연결 상태만 표시하며, 토큰·암호문·시크릿·정확한 만료 시각은 화면에 표시하지 않습니다.</p><div className="mt-5 grid gap-2 text-sm">{oauthSettings.map(([name, configured]) => <p key={name} className="flex items-center justify-between rounded-md bg-stone-50 px-3 py-2"><span>{name}</span><span className={configured ? "font-medium text-emerald-700" : "font-medium text-stone-500"}>{configured ? "설정됨" : "미설정"}</span></p>)}</div>{oauthConnectionReady && <a href="/api/naver/connect" className="mt-6 inline-block rounded-lg bg-emerald-700 px-5 py-3 text-sm font-bold text-white">네이버 연결</a>}</section>
-      <section className="rounded-xl border border-stone-200 bg-white p-6"><h2 className="font-bold">카페 발행 대상 설정</h2><div className="mt-4 grid gap-2 text-sm">{cafeTargetSettings.map(([name, configured]) => <p key={name} className="flex items-center justify-between rounded-md bg-stone-50 px-3 py-2"><span>{name}</span><span className={configured ? "font-medium text-emerald-700" : "font-medium text-stone-500"}>{configured ? "설정됨" : "미설정"}</span></p>)}</div>{!cafeTargetReady && <p className="mt-4 text-sm text-stone-600">카페/게시판 대상 설정은 아직 완료되지 않았습니다.</p>}</section>
+      <section className="rounded-xl border border-stone-200 bg-white p-7"><h2 className="text-lg font-bold">네이버 계정 연결</h2><p className="mt-3 text-base font-semibold">{statusMessage}</p><p className="mt-2 text-sm text-stone-600">연결 상태만 표시하며, 토큰·암호문·시크릿·정확한 만료 시각은 화면에 표시하지 않습니다.</p><div className="mt-5 grid gap-2 text-sm">{oauthSettings.map(([name, configured]) => <p key={name} className="flex items-center justify-between rounded-md bg-stone-50 px-3 py-2"><span>{name}</span><span className={configured ? "font-medium text-emerald-700" : "font-medium text-stone-500"}>{configured ? "설정됨" : "미설정"}</span></p>)}</div>{oauthConnectionReady && status !== "connected" && <a href="/api/naver/connect" className="mt-6 inline-block rounded-lg bg-emerald-700 px-5 py-3 text-sm font-bold text-white">네이버 연결</a>}</section>
+      <section className="rounded-xl border border-stone-200 bg-white p-6"><h2 className="font-bold">카페 발행 대상 설정</h2><p className="mt-2 text-sm text-stone-600">이 설정은 네이버 계정 연결에 필요하지 않으며, 향후 발행 대상을 지정할 때만 사용됩니다.</p><div className="mt-4 grid gap-2 text-sm">{cafeTargetSettings.map(([name, configured]) => <p key={name} className="flex items-center justify-between rounded-md bg-stone-50 px-3 py-2"><span>{name}</span><span className={configured ? "font-medium text-emerald-700" : "font-medium text-stone-500"}>{configured ? "설정됨" : "미설정"}</span></p>)}</div>{!cafeTargetReady && <p className="mt-4 text-sm text-stone-600">카페/게시판 대상 설정은 아직 완료되지 않았습니다.</p>}</section>
       {!publishingEnabled && <p className="rounded-lg bg-stone-100 p-4 text-sm text-stone-700">보안을 위해 실제 네이버 카페 발행은 현재 비활성 상태입니다.</p>}
       <section className="rounded-xl border border-stone-200 bg-white p-6"><h2 className="font-bold">승인 완료 콘텐츠</h2><p className="mt-2 text-sm text-stone-600">승인 완료(approved) 콘텐츠만 향후 발행 대상이 될 수 있습니다. 이 화면에서는 실제 발행이나 네이버 카페 API 호출을 수행하지 않습니다.</p></section>
     </div>
