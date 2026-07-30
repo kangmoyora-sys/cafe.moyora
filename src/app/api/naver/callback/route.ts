@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserRole } from "@/lib/auth";
 import { encryptNaverToken, getNaverOAuthConfig, hashOAuthState, isExpectedNaverCallback, statesMatch } from "@/lib/naver-oauth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -77,7 +78,10 @@ export async function GET(request: NextRequest) {
     const expiresIn = typeof tokens.expires_in === "string" || typeof tokens.expires_in === "number" ? Number(tokens.expires_in) : Number.NaN;
     const tokenExpiresAt = Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
 
-    const { error } = await supabase.from("naver_oauth_connections").upsert({
+    const adminClient = createAdminClient();
+    if (!adminClient) return redirect(request, "/settings/naver?notice=connection-failed");
+
+    const { error } = await adminClient.from("naver_oauth_connections").upsert({
       owner_user_id: current.user.id,
       encrypted_access_token: encryptNaverToken(tokens.access_token, config.encryptionKey),
       encrypted_refresh_token: refreshToken ? encryptNaverToken(refreshToken, config.encryptionKey) : null,
