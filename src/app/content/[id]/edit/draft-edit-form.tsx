@@ -15,7 +15,9 @@ function SubmitButton() {
 export function DraftEditForm({ draft, isAdmin }: { draft: ContentDraft; isAdmin: boolean }) {
   const [state, formAction] = useActionState(updateDraft.bind(null, draft.id), initialState);
   const [values, setValues] = useState({ title: draft.title, keyword: draft.keyword, purpose: draft.purpose, length: draft.length, tone: draft.tone, body: draft.body, status: draft.status });
-  const statusOptions: { value: DraftStatus; label: string }[] = isAdmin ? [{ value: "draft", label: "초안" }, { value: "review", label: "검토 요청" }, { value: "approved", label: "승인 완료" }] : [{ value: "draft", label: "초안" }, { value: "review", label: "검토 요청" }];
+  const statusOptions: { value: DraftStatus; label: string }[] = isAdmin
+    ? [{ value: "draft", label: "초안" }, { value: "review", label: "검토 요청" }, { value: "approved", label: "승인 완료" }]
+    : [{ value: "draft", label: "초안" }, { value: "review", label: "검토 요청" }];
 
   return <form action={formAction} className="max-w-2xl space-y-6 rounded-xl border border-stone-200 bg-white p-6">
     <label className="block text-sm font-semibold">제목<input name="title" required maxLength={200} value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>

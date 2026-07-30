@@ -41,6 +41,7 @@ export async function updateDraft(id: string, _previousState: EditDraftFormState
 
   const supabase = await createClient();
   if (!supabase) return { error: "저장 설정을 확인할 수 없습니다. 관리자에게 문의해 주세요." };
+
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   const isAdmin = profile?.role === "admin";
   if (!isAdmin && status === "approved") return { error: "승인 완료 상태는 관리자만 설정할 수 있습니다." };
