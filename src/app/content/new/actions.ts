@@ -45,6 +45,7 @@ export async function saveDraft(_previousState: DraftFormState, formData: FormDa
     length,
     tone,
     body: body.value,
+    status: "draft",
   });
 
   if (error) return { error: "초안을 저장하지 못했습니다. 입력 내용을 확인한 뒤 다시 시도해 주세요." };

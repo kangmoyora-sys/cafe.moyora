@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { getContentDraftById } from "@/lib/content-drafts";
-import { getCurrentUser } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { DraftEditForm } from "./draft-edit-form";
 
 function DraftAccessNotice({ email }: { email: string }) {
@@ -16,13 +16,10 @@ export default async function ContentEditPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const draft = await getContentDraftById(id);
   const email = user.email ?? "로그인 사용자";
-
   if (!draft) return <DraftAccessNotice email={email} />;
 
-  return (
-    <AppShell email={email} title="초안 수정" description="초안 내용을 수정한 뒤 저장하세요.">
-      <div className="mb-6"><Link href={`/content/${draft.id}`} className="text-sm font-semibold text-emerald-700">← 초안 상세로 돌아가기</Link></div>
-      <DraftEditForm draft={draft} />
-    </AppShell>
-  );
+  const supabase = await createClient();
+  const { data: profile } = supabase ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null };
+
+  return <AppShell email={email} title="초안 수정" description="초안 내용을 수정한 뒤 저장하세요."><div className="mb-6"><Link href={`/content/${draft.id}`} className="text-sm font-semibold text-emerald-700">← 초안 상세로 돌아가기</Link></div><DraftEditForm draft={draft} isAdmin={profile?.role === "admin"} /></AppShell>;
 }

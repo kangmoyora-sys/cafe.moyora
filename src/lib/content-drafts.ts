@@ -9,10 +9,12 @@ export type ContentDraft = {
   length: "short" | "medium" | "long";
   tone: "friendly_informative" | "practical_guide";
   body: string;
-  status: "draft";
+  status: DraftStatus;
   created_at: string;
   updated_at: string;
 };
+
+export type DraftStatus = "draft" | "review" | "approved";
 
 export async function getContentDrafts(limit?: number) {
   const supabase = await createClient();
@@ -71,3 +73,15 @@ export const draftToneLabels = {
   friendly_informative: "친근한 정보형",
   practical_guide: "실용적인 가이드형",
 } as const;
+
+export const draftStatusLabels: Record<DraftStatus, string> = {
+  draft: "초안",
+  review: "검토 요청",
+  approved: "승인 완료",
+};
+
+export const draftStatusClasses: Record<DraftStatus, string> = {
+  draft: "bg-stone-100 text-stone-700",
+  review: "bg-amber-100 text-amber-800",
+  approved: "bg-emerald-100 text-emerald-800",
+};

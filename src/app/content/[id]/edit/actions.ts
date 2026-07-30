@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { isContentDraftId } from "@/lib/content-drafts";
+import { isContentDraftId, type DraftStatus } from "@/lib/content-drafts";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 
 export type EditDraftFormState = { error?: string };
 
 const lengths = ["short", "medium", "long"] as const;
 const tones = ["friendly_informative", "practical_guide"] as const;
-const statuses = ["draft"] as const;
+const statuses = ["draft", "review", "approved"] as const;
 
 function readRequiredText(formData: FormData, field: string, label: string, maximum: number) {
   const value = String(formData.get(field) ?? "").trim();
@@ -27,7 +27,6 @@ export async function updateDraft(id: string, _previousState: EditDraftFormState
   const keyword = readRequiredText(formData, "keyword", "키워드", 100);
   const purpose = readRequiredText(formData, "purpose", "작성 목적", 1000);
   const body = readRequiredText(formData, "body", "본문", 10000);
-
   if ("error" in title) return title;
   if ("error" in keyword) return keyword;
   if ("error" in purpose) return purpose;
@@ -35,13 +34,18 @@ export async function updateDraft(id: string, _previousState: EditDraftFormState
 
   const length = String(formData.get("length") ?? "");
   const tone = String(formData.get("tone") ?? "");
-  const status = String(formData.get("status") ?? "");
+  const status = String(formData.get("status") ?? "") as DraftStatus;
   if (!lengths.includes(length as (typeof lengths)[number])) return { error: "글 길이를 선택해 주세요." };
   if (!tones.includes(tone as (typeof tones)[number])) return { error: "말투를 선택해 주세요." };
-  if (!statuses.includes(status as (typeof statuses)[number])) return { error: "유효한 상태를 선택해 주세요." };
+  if (!statuses.includes(status)) return { error: "유효한 상태를 선택해 주세요." };
 
   const supabase = await createClient();
   if (!supabase) return { error: "저장 설정을 확인할 수 없습니다. 관리자에게 문의해 주세요." };
+
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const isAdmin = profile?.role === "admin";
+  if (!isAdmin && status === "approved") return { error: "승인 완료 상태는 관리자만 설정할 수 있습니다." };
+  if (!isAdmin && !["draft", "review"].includes(status)) return { error: "editor는 초안 또는 검토 요청 상태만 설정할 수 있습니다." };
 
   const { data, error } = await supabase
     .from("content_drafts")
