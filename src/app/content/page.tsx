@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { formatDraftDate, getContentDrafts } from "@/lib/content-drafts";
+import { draftStatusClasses, draftStatusLabels, formatDraftDate, getContentDrafts } from "@/lib/content-drafts";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export default async function ContentPage({ searchParams }: { searchParams: Promise<{ created?: string }> }) {
@@ -27,7 +27,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="bg-stone-50 text-stone-600"><tr><th className="px-5 py-3 font-semibold">제목</th><th className="px-5 py-3 font-semibold">작성자</th><th className="px-5 py-3 font-semibold">상태</th><th className="px-5 py-3 font-semibold">수정일</th></tr></thead>
               <tbody>
-                {drafts.map((draft) => <tr key={draft.id} className="border-t border-stone-100"><td className="px-5 py-4 font-medium text-stone-900">{draft.title}</td><td className="px-5 py-4 text-stone-600">{draft.user_id === user.id ? "나" : `사용자 ${draft.user_id.slice(0, 8)}`}</td><td className="px-5 py-4"><span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700">초안</span></td><td className="px-5 py-4 text-stone-600">{formatDraftDate(draft.updated_at)}</td></tr>)}
+                {drafts.map((draft) => <tr key={draft.id} className="border-t border-stone-100"><td className="px-5 py-4 font-medium text-stone-900"><Link href={`/content/${draft.id}`} className="hover:text-emerald-700 hover:underline">{draft.title}</Link></td><td className="px-5 py-4 text-stone-600">{draft.user_id === user.id ? "나" : `사용자 ${draft.user_id.slice(0, 8)}`}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${draftStatusClasses[draft.status]}`}>{draftStatusLabels[draft.status]}</span></td><td className="px-5 py-4 text-stone-600">{formatDraftDate(draft.updated_at)}</td></tr>)}
               </tbody>
             </table>
           </div>
