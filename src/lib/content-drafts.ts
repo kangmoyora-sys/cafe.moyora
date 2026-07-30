@@ -32,6 +32,28 @@ export async function getContentDrafts(limit?: number) {
   return data as ContentDraft[];
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isContentDraftId(value: string) {
+  return uuidPattern.test(value);
+}
+
+export async function getContentDraftById(id: string) {
+  if (!isContentDraftId(id)) return null;
+
+  const supabase = await createClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("content_drafts")
+    .select("id, user_id, title, keyword, purpose, length, tone, body, status, created_at, updated_at")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as ContentDraft;
+}
+
 export function formatDraftDate(value: string) {
   return new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "medium",
