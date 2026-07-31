@@ -22,6 +22,16 @@ function connectionFailed(request: NextRequest, stage: string) {
   return redirect(request, "/settings/naver?notice=connection-failed");
 }
 
+function getSafeDatabaseFailureKind(code?: string, message?: string) {
+  if (code !== "42501") return code ? "database-error" : "database-error-unknown";
+
+  if (/row-level security/i.test(message ?? "")) return "row-level-security";
+  if (/permission denied for table/i.test(message ?? "")) return "table-permission";
+  if (/permission denied for sequence/i.test(message ?? "")) return "sequence-permission";
+  if (/permission denied for function/i.test(message ?? "")) return "function-permission";
+  return "permission-unknown-source";
+}
+
 export async function GET(request: NextRequest) {
   const current = await getCurrentUserRole();
   if (!current) {
@@ -103,8 +113,12 @@ export async function GET(request: NextRequest) {
       disconnected_at: null,
     }, { onConflict: "owner_user_id" });
     if (error) {
-      // The database error code identifies the failing class without logging data or secrets.
-      console.error("Naver OAuth callback failed", { stage: "token-upsert-failed", code: error.code });
+      // Log only a fixed error category; never emit OAuth values, tokens, keys, or raw database messages.
+      console.error("Naver OAuth callback failed", {
+        stage: "token-upsert-failed",
+        code: error.code,
+        reason: getSafeDatabaseFailureKind(error.code, error.message),
+      });
       return redirect(request, "/settings/naver?notice=connection-failed");
     }
 
