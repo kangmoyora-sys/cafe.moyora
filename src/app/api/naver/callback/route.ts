@@ -16,17 +16,29 @@ function redirect(request: NextRequest, path: string) {
   return response;
 }
 
+function connectionFailed(request: NextRequest, stage: string) {
+  // Keep diagnostics useful without exposing OAuth codes, state, tokens, or secrets.
+  console.error("Naver OAuth callback failed", { stage });
+  return redirect(request, "/settings/naver?notice=connection-failed");
+}
+
 export async function GET(request: NextRequest) {
   const current = await getCurrentUserRole();
-  if (!current) return redirect(request, "/login");
-  if (current.role !== "admin") return redirect(request, "/dashboard?notice=admin-only");
+  if (!current) {
+    console.error("Naver OAuth callback failed", { stage: "missing-current-user" });
+    return redirect(request, "/login");
+  }
+  if (current.role !== "admin") {
+    console.error("Naver OAuth callback failed", { stage: "not-admin" });
+    return redirect(request, "/dashboard?notice=admin-only");
+  }
 
   const state = request.nextUrl.searchParams.get("state");
   const stateCookie = request.cookies.get("naver_oauth_state")?.value;
-  if (!state || !stateCookie || !statesMatch(state, stateCookie)) return redirect(request, "/settings/naver?notice=connection-failed");
+  if (!state || !stateCookie || !statesMatch(state, stateCookie)) return connectionFailed(request, "invalid-state");
 
   const supabase = await createClient();
-  if (!supabase) return redirect(request, "/settings/naver?notice=connection-failed");
+  if (!supabase) return connectionFailed(request, "missing-user-client");
 
   const now = new Date().toISOString();
   const { data: oauthState } = await supabase
@@ -37,7 +49,7 @@ export async function GET(request: NextRequest) {
     .is("consumed_at", null)
     .gt("expires_at", now)
     .maybeSingle();
-  if (!oauthState) return redirect(request, "/settings/naver?notice=connection-failed");
+  if (!oauthState) return connectionFailed(request, "state-not-found-or-expired");
 
   const { data: consumedState } = await supabase
     .from("naver_oauth_states")
@@ -46,15 +58,15 @@ export async function GET(request: NextRequest) {
     .is("consumed_at", null)
     .select("id")
     .maybeSingle();
-  if (!consumedState) return redirect(request, "/settings/naver?notice=connection-failed");
+  if (!consumedState) return connectionFailed(request, "state-not-consumed");
 
   const config = getNaverOAuthConfig();
-  if (!config) return redirect(request, "/settings/naver?notice=connection-failed");
-  if (!isExpectedNaverCallback(config.callbackUrl, request.url)) return redirect(request, "/settings/naver?notice=connection-failed");
-  if (request.nextUrl.searchParams.has("error")) return redirect(request, "/settings/naver?notice=connection-failed");
+  if (!config) return connectionFailed(request, "invalid-oauth-config");
+  if (!isExpectedNaverCallback(config.callbackUrl, request.url)) return connectionFailed(request, "unexpected-callback-url");
+  if (request.nextUrl.searchParams.has("error")) return connectionFailed(request, "naver-returned-error");
 
   const code = request.nextUrl.searchParams.get("code");
-  if (!code) return redirect(request, "/settings/naver?notice=connection-failed");
+  if (!code) return connectionFailed(request, "missing-authorization-code");
 
   try {
     const tokenResponse = await fetch("https://nid.naver.com/oauth2.0/token", {
@@ -70,16 +82,16 @@ export async function GET(request: NextRequest) {
       }),
       cache: "no-store",
     });
-    if (!tokenResponse.ok) return redirect(request, "/settings/naver?notice=connection-failed");
+    if (!tokenResponse.ok) return connectionFailed(request, `token-exchange-http-${tokenResponse.status}`);
 
     const tokens = await tokenResponse.json() as TokenResponse;
-    if (typeof tokens.access_token !== "string" || !tokens.access_token) return redirect(request, "/settings/naver?notice=connection-failed");
+    if (typeof tokens.access_token !== "string" || !tokens.access_token) return connectionFailed(request, "token-response-missing-access-token");
     const refreshToken = typeof tokens.refresh_token === "string" ? tokens.refresh_token : null;
     const expiresIn = typeof tokens.expires_in === "string" || typeof tokens.expires_in === "number" ? Number(tokens.expires_in) : Number.NaN;
     const tokenExpiresAt = Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
 
     const adminClient = createAdminClient();
-    if (!adminClient) return redirect(request, "/settings/naver?notice=connection-failed");
+    if (!adminClient) return connectionFailed(request, "missing-admin-client");
 
     const { error } = await adminClient.from("naver_oauth_connections").upsert({
       owner_user_id: current.user.id,
@@ -90,10 +102,10 @@ export async function GET(request: NextRequest) {
       updated_at: now,
       disconnected_at: null,
     }, { onConflict: "owner_user_id" });
-    if (error) return redirect(request, "/settings/naver?notice=connection-failed");
+    if (error) return connectionFailed(request, "token-upsert-failed");
 
     return redirect(request, "/settings/naver?notice=connected");
   } catch {
-    return redirect(request, "/settings/naver?notice=connection-failed");
+    return connectionFailed(request, "unexpected-exception");
   }
 }
