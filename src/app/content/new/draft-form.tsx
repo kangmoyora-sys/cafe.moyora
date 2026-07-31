@@ -3,9 +3,13 @@
 import { useActionState, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
-import { generateAIDraft, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation } from "./actions";
+import { findPlacesFromReferences, generateAIDraft, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation } from "./actions";
 
 const initialState: DraftFormState = {};
+
+function mergePlaces(current: GooglePlace[], incoming: GooglePlace[]) {
+  return [...new Map([...current, ...incoming].map((place) => [place.id, place])).values()];
+}
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -34,10 +38,11 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   const [newsRecommendations, setNewsRecommendations] = useState<NaverNewsRecommendation[]>([]);
   const [newsRecommendationError, setNewsRecommendationError] = useState("");
   const [isSearchingPlaces, startSearchingPlaces] = useTransition();
+  const [isFindingReferencePlaces, startFindingReferencePlaces] = useTransition();
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeError, setPlaceError] = useState("");
   const [placeResults, setPlaceResults] = useState<GooglePlace[]>([]);
-  const [selectedPlaceId, setSelectedPlaceId] = useState("");
+  const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
   const [researchSource, setResearchSource] = useState<"auto" | "blog" | "news">("auto");
   const [title, setTitle] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -65,7 +70,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     formData.set("writingGuideId", writingGuideId);
     formData.set("writingGuideNotes", writingGuideNotes);
     formData.set("newsReferences", JSON.stringify(newsItems.filter((item) => selectedNewsUrls.includes(item.sourceUrl))));
-    formData.set("googlePlaceId", selectedPlaceId);
+    formData.set("googlePlaceIds", JSON.stringify(selectedPlaceIds));
 
     startGenerating(async () => {
       const result = await generateAIDraft(formData);
@@ -90,6 +95,8 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
       }
       setNewsItems(result.items);
       setSelectedNewsUrls([]);
+      setPlaceResults((current) => current.filter((place) => place.source !== "automatic"));
+      setSelectedPlaceIds((current) => current.filter((id) => placeResults.some((place) => place.id === id && place.source === "manual")));
       setNewsRecommendations([]);
       setNewsRecommendationError("");
     });
@@ -126,14 +133,28 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     startSearchingPlaces(async () => {
       const result = await searchGooglePlaces(placeQuery);
       if (result.error) {
-        setPlaceResults([]);
-        setSelectedPlaceId("");
         setPlaceError(result.error);
         return;
       }
-      setPlaceResults(result.places);
-      setSelectedPlaceId("");
+      setPlaceResults((current) => mergePlaces(current, result.places));
     });
+  }
+
+  function handleReferencePlaceSearch() {
+    setPlaceError("");
+    const selectedReferences = newsItems.filter((item) => selectedNewsUrls.includes(item.sourceUrl));
+    startFindingReferencePlaces(async () => {
+      const result = await findPlacesFromReferences(keyword, JSON.stringify(selectedReferences));
+      if (result.error) {
+        setPlaceError(result.error);
+        return;
+      }
+      setPlaceResults((current) => mergePlaces(current.filter((place) => place.source !== "automatic"), result.places));
+    });
+  }
+
+  function togglePlaceSelection(placeId: string) {
+    setSelectedPlaceIds((current) => current.includes(placeId) ? current.filter((id) => id !== placeId) : [...current, placeId]);
   }
 
   return (
@@ -157,16 +178,20 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
         {newsItems.length > 0 && <div className="mt-4 space-y-3">{newsItems.map((item) => <label key={item.sourceUrl} className="block cursor-pointer rounded-lg border border-sky-100 bg-white p-3"><div className="flex gap-3"><input type="checkbox" checked={selectedNewsUrls.includes(item.sourceUrl)} onChange={() => toggleNewsSelection(item.sourceUrl)} className="mt-1" /><span><span className="mr-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">{item.sourceType === "blog" ? "블로그 후기" : "최신 뉴스"}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="font-semibold text-sky-800 hover:underline">{item.title}</a><span className="ml-2 text-xs text-stone-500">{item.publishedAt}</span><p className="mt-1 text-sm text-stone-600">{item.description}</p></span></div></label>)}</div>}
       </section>
       <section className="rounded-lg border border-amber-100 bg-amber-50/50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 pb-4">
+          <div><h2 className="text-sm font-semibold">참고자료 속 장소 자동 찾기</h2><p className="mt-1 text-xs text-stone-600">선택한 참고자료의 제목·요약에서 장소 후보를 찾고, 지도에서 주소를 다시 확인합니다.</p></div>
+          <button type="button" onClick={handleReferencePlaceSearch} disabled={isFindingReferencePlaces || selectedNewsUrls.length === 0} className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">{isFindingReferencePlaces ? "장소 찾는 중…" : "선택 참고자료에서 장소 찾기"}</button>
+        </div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="min-w-0 flex-1 text-sm font-semibold">
-            실제 장소 확인 <span className="font-normal text-stone-500">(선택)</span>
+            직접 장소 검색 <span className="font-normal text-stone-500">(선택)</span>
             <input value={placeQuery} onChange={(event) => setPlaceQuery(event.target.value)} maxLength={150} placeholder="예: 깜란 엠어이 베트남" className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
           </label>
           <button type="button" onClick={handlePlaceSearch} disabled={isSearchingPlaces} className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingPlaces ? "장소 검색 중…" : "실제 장소 검색"}</button>
         </div>
-        <p className="mt-2 text-xs text-stone-600">장소를 하나 선택하면 AI는 검색으로 확인된 장소명·주소·지도 링크만 사용할 수 있습니다. 선택하지 않으면 지도 링크를 만들지 않습니다.</p>
+        <p className="mt-2 text-xs text-stone-600">자동·직접 검색 결과의 주소를 모두 확인한 뒤, 글에 넣을 장소를 여러 개 선택하세요. AI는 선택한 장소명·주소·지도 링크만 사용할 수 있습니다.</p>
         {placeError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{placeError}</p>}
-        {placeResults.length > 0 && <div className="mt-3 space-y-2">{placeResults.map((place) => <label key={place.id} className="flex cursor-pointer gap-3 rounded-lg border border-amber-100 bg-white p-3"><input type="radio" name="selectedGooglePlace" checked={selectedPlaceId === place.id} onChange={() => setSelectedPlaceId(place.id)} className="mt-1" /><span><strong>{place.name}</strong><p className="mt-1 text-sm text-stone-600">{place.formattedAddress}</p><a href={place.mapsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="mt-1 inline-block text-sm font-semibold text-amber-800 hover:underline">지도에서 확인</a></span></label>)}</div>}
+        {placeResults.length > 0 && <div className="mt-3 space-y-2"><p className="text-sm font-semibold text-amber-950">확인된 장소 {placeResults.length}곳 · 선택 {selectedPlaceIds.length}곳</p>{placeResults.map((place) => <label key={place.id} className="flex cursor-pointer gap-3 rounded-lg border border-amber-100 bg-white p-3"><input type="checkbox" checked={selectedPlaceIds.includes(place.id)} onChange={() => togglePlaceSelection(place.id)} className="mt-1" /><span><span className="mr-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900">{place.source === "automatic" ? "참고자료 자동 확인" : "직접 검색"}</span><strong>{place.name}</strong><p className="mt-1 text-sm text-stone-600">{place.formattedAddress}</p><a href={place.mapsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="mt-1 inline-block text-sm font-semibold text-amber-800 hover:underline">지도에서 확인</a></span></label>)}</div>}
       </section>
       <label className="block text-sm font-semibold">
         작성 목적
