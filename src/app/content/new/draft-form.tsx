@@ -3,7 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
-import { generateAIDraft, saveDraft, searchNaverNews, type DraftFormState, type NaverNewsItem } from "./actions";
+import { generateAIDraft, recommendNaverNews, saveDraft, searchNaverNews, type DraftFormState, type NaverNewsItem, type NaverNewsRecommendation } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -30,6 +30,9 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   const [newsError, setNewsError] = useState("");
   const [newsItems, setNewsItems] = useState<NaverNewsItem[]>([]);
   const [selectedNewsUrls, setSelectedNewsUrls] = useState<string[]>([]);
+  const [isRecommendingNews, startRecommendingNews] = useTransition();
+  const [newsRecommendations, setNewsRecommendations] = useState<NaverNewsRecommendation[]>([]);
+  const [newsRecommendationError, setNewsRecommendationError] = useState("");
   const [title, setTitle] = useState("");
   const [keyword, setKeyword] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -76,6 +79,28 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
       }
       setNewsItems(result.items);
       setSelectedNewsUrls([]);
+      setNewsRecommendations([]);
+      setNewsRecommendationError("");
+    });
+  }
+
+  function handleNewsRecommendation() {
+    setNewsRecommendationError("");
+    const formData = new FormData();
+    formData.set("keyword", keyword);
+    formData.set("purpose", purpose);
+    formData.set("writingGuideId", writingGuideId);
+    formData.set("writingGuideNotes", writingGuideNotes);
+    formData.set("newsReferences", JSON.stringify(newsItems));
+
+    startRecommendingNews(async () => {
+      const result = await recommendNaverNews(formData);
+      if (result.error) {
+        setNewsRecommendations([]);
+        setNewsRecommendationError(result.error);
+        return;
+      }
+      setNewsRecommendations(result.recommendations);
     });
   }
 
@@ -95,10 +120,11 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
       </label>
       <section className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-sm font-semibold">네이버 뉴스 참고</h2><p className="mt-1 text-xs text-stone-600">키워드와 관련된 최근 기사 중 참고할 항목만 선택하세요.</p></div>
+          <div><h2 className="text-sm font-semibold">네이버 뉴스 참고</h2><p className="mt-1 text-xs text-stone-600">키워드와 관련된 최신 기사 최대 10개를 확인하고, 참고할 항목만 선택하세요.</p></div>
           <button type="button" onClick={handleNewsSearch} disabled={isSearchingNews} className="rounded-lg border border-sky-700 px-4 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingNews ? "뉴스 검색 중…" : "뉴스 검색"}</button>
         </div>
         {newsError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{newsError}</p>}
+        {newsItems.length >= 2 && <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-violet-950">작성 목적과 가이드를 기준으로 AI가 가장 쓸모 있는 기사 2개를 추천합니다.</p><button type="button" onClick={handleNewsRecommendation} disabled={isRecommendingNews} className="rounded-lg border border-violet-700 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isRecommendingNews ? "AI 추천 중…" : "AI 추천 받기"}</button></div>{newsRecommendationError && <p role="alert" className="mt-3 text-sm text-red-700">{newsRecommendationError}</p>}{newsRecommendations.length > 0 && <ul className="mt-3 space-y-2 text-sm text-violet-950">{newsRecommendations.map((recommendation, index) => { const item = newsItems.find((newsItem) => newsItem.sourceUrl === recommendation.sourceUrl); return item ? <li key={recommendation.sourceUrl} className="rounded bg-white p-3"><strong>{index + 1}. {item.title}</strong><p className="mt-1 text-violet-800">추천 이유: {recommendation.reason}</p></li> : null; })}</ul>}</div>}
         {newsItems.length > 0 && <div className="mt-4 space-y-3">{newsItems.map((item) => <label key={item.sourceUrl} className="block cursor-pointer rounded-lg border border-sky-100 bg-white p-3"><div className="flex gap-3"><input type="checkbox" checked={selectedNewsUrls.includes(item.sourceUrl)} onChange={() => toggleNewsSelection(item.sourceUrl)} className="mt-1" /><span><a href={item.sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="font-semibold text-sky-800 hover:underline">{item.title}</a><span className="ml-2 text-xs text-stone-500">{item.publishedAt}</span><p className="mt-1 text-sm text-stone-600">{item.description}</p></span></div></label>)}</div>}
       </section>
       <label className="block text-sm font-semibold">
