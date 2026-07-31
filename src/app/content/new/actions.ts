@@ -8,6 +8,14 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 export type DraftFormState = { error?: string };
 export type AIDraftResult = { error?: string; title?: string; body?: string };
 
+type WritingGuideValue = {
+  id: string | null;
+  title: string | null;
+  instructions: string | null;
+};
+
+type WritingGuideResult = { value: WritingGuideValue } | { error: string };
+
 const lengths = ["short", "medium", "long"] as const;
 const tones = ["friendly_informative", "practical_guide"] as const;
 
@@ -35,10 +43,10 @@ function readOptionalText(formData: FormData, field: string, label: string, maxi
   return { value };
 }
 
-async function readWritingGuide(formData: FormData) {
+async function readWritingGuide(formData: FormData): Promise<WritingGuideResult> {
   const guideId = String(formData.get("writingGuideId") ?? "").trim();
   const extra = readOptionalText(formData, "writingGuideNotes", "추가 작성 지시", 2000);
-  if ("error" in extra) return extra;
+  if ("error" in extra) return { error: extra.error };
 
   if (!guideId && !extra.value) return { value: { id: null, title: null, instructions: null } };
   if (!guideId) return { value: { id: null, title: "직접 입력 가이드", instructions: extra.value } };
