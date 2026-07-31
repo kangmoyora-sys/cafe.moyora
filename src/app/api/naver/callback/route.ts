@@ -23,12 +23,19 @@ function connectionFailed(request: NextRequest, stage: string) {
 }
 
 function getSafeDatabaseFailureKind(code?: string, message?: string) {
-  if (code !== "42501") return code ? "database-error" : "database-error-unknown";
+  const safeMessage = message ?? "";
 
-  if (/row-level security/i.test(message ?? "")) return "row-level-security";
-  if (/permission denied for table/i.test(message ?? "")) return "table-permission";
-  if (/permission denied for sequence/i.test(message ?? "")) return "sequence-permission";
-  if (/permission denied for function/i.test(message ?? "")) return "function-permission";
+  if (!code) {
+    if (/invalid api key|api key.*invalid|jwt.*invalid/i.test(safeMessage)) return "api-key-rejected";
+    if (/fetch failed|network|timeout/i.test(safeMessage)) return "network-request-failed";
+    return "database-error-unknown";
+  }
+  if (code !== "42501") return "database-error";
+
+  if (/row-level security/i.test(safeMessage)) return "row-level-security";
+  if (/permission denied for table/i.test(safeMessage)) return "table-permission";
+  if (/permission denied for sequence/i.test(safeMessage)) return "sequence-permission";
+  if (/permission denied for function/i.test(safeMessage)) return "function-permission";
   return "permission-unknown-source";
 }
 
