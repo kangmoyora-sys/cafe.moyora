@@ -16,7 +16,7 @@ npm run dev
 
 ## 환경변수 설정
 
-`.env.example`을 `.env.local`로 복사하고 Supabase 프로젝트에서 발급한 URL과 Publishable Key를 입력합니다. 서버 전용 값(`SUPABASE_SECRET_KEY`, 네이버 Client Secret)은 브라우저에 노출되지 않도록 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다. 비밀값은 저장소에 커밋하지 않습니다.
+`.env.example`을 `.env.local`로 복사하고 Supabase 프로젝트에서 발급한 URL과 Publishable Key를 입력합니다. 서버 전용 값(`SUPABASE_SERVICE_ROLE_KEY`, 네이버 Client Secret, 토큰 암호화 키)은 브라우저에 노출되지 않도록 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다. 비밀값은 저장소에 커밋하지 않습니다.
 
 현재 기본값으로 안내되는 대상은 네이버 카페 ID `31752861`, 게시판 Menu ID `58`입니다.
 
@@ -24,7 +24,7 @@ npm run dev
 
 1. GitHub 원격 저장소에 변경 사항을 푸시합니다.
 2. Vercel에서 저장소를 Import하고 Next.js 프레임워크를 선택합니다.
-3. Vercel Project Settings의 Environment Variables에 `.env.local`과 같은 키를 등록합니다.
+3. Vercel Project Settings의 Environment Variables에 `.env.local`과 같은 키를 등록합니다. Production과 Preview에는 각각 별도 Supabase 프로젝트의 URL, Publishable Key, Service Role Key를 설정합니다. Preview에 Production Supabase 자격 증명을 재사용하지 않습니다.
 4. 배포 전 `npm run lint`, `npm run build`를 확인한 뒤 Production 배포합니다.
 
 운영 URL: https://moyora-cafe-studio.vercel.app
@@ -49,7 +49,7 @@ npm run dev
 
 ## 아직 미구현인 기능
 
-- 실제 네이버 OAuth 및 네이버 카페 글쓰기
+- 네이버 카페 글쓰기
 - Naver Search API 호출
 - OpenAI 기반 글 생성
 - 예약 발행 및 이미지 업로드
