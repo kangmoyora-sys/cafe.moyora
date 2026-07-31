@@ -15,6 +15,7 @@ type WritingGuideValue = {
 };
 
 type WritingGuideResult = { value: WritingGuideValue } | { error: string };
+type TextReadResult = { value: string } | { error: string };
 
 const lengths = ["short", "medium", "long"] as const;
 const tones = ["friendly_informative", "practical_guide"] as const;
@@ -30,14 +31,14 @@ const toneLabels = {
   practical_guide: "실용적인 가이드형",
 } as const;
 
-function readRequiredText(formData: FormData, field: string, label: string, maximum: number) {
+function readRequiredText(formData: FormData, field: string, label: string, maximum: number): TextReadResult {
   const value = String(formData.get(field) ?? "").trim();
   if (!value) return { error: `${label}을(를) 입력해 주세요.` };
   if (value.length > maximum) return { error: `${label}은(는) ${maximum}자 이내로 입력해 주세요.` };
   return { value };
 }
 
-function readOptionalText(formData: FormData, field: string, label: string, maximum: number) {
+function readOptionalText(formData: FormData, field: string, label: string, maximum: number): TextReadResult {
   const value = String(formData.get(field) ?? "").trim();
   if (value.length > maximum) return { error: `${label}은(는) ${maximum}자 이내로 입력해 주세요.` };
   return { value };
@@ -103,7 +104,7 @@ export async function saveDraft(_previousState: DraftFormState, formData: FormDa
   redirect("/content?created=1");
 }
 
-function readGenerationInput(formData: FormData, field: string, label: string, maximum: number) {
+function readGenerationInput(formData: FormData, field: string, label: string, maximum: number): TextReadResult {
   const value = String(formData.get(field) ?? "").trim();
   if (!value) return { error: `${label}을(를) 입력한 뒤 AI 초안 생성을 시도해 주세요.` };
   if (value.length > maximum) return { error: `${label}은(는) ${maximum}자 이내로 입력해 주세요.` };
