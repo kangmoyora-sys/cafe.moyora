@@ -33,9 +33,12 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   const [isRecommendingNews, startRecommendingNews] = useTransition();
   const [newsRecommendations, setNewsRecommendations] = useState<NaverNewsRecommendation[]>([]);
   const [newsRecommendationError, setNewsRecommendationError] = useState("");
+  const [researchSource, setResearchSource] = useState<"auto" | "blog" | "news">("auto");
   const [title, setTitle] = useState("");
   const [keyword, setKeyword] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [readerProfile, setReaderProfile] = useState("");
+  const [contentAngle, setContentAngle] = useState("");
   const [length, setLength] = useState("short");
   const [tone, setTone] = useState("friendly_informative");
   const [writingGuideId, setWritingGuideId] = useState("");
@@ -50,6 +53,8 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     const formData = new FormData();
     formData.set("keyword", keyword);
     formData.set("purpose", purpose);
+    formData.set("readerProfile", readerProfile);
+    formData.set("contentAngle", contentAngle);
     formData.set("length", length);
     formData.set("tone", tone);
     formData.set("writingGuideId", writingGuideId);
@@ -72,7 +77,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   function handleNewsSearch() {
     setNewsError("");
     startSearchingNews(async () => {
-      const result = await searchNaverNews(keyword);
+      const result = await searchNaverNews(keyword, researchSource);
       if (result.error) {
         setNewsError(result.error);
         return;
@@ -89,6 +94,8 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     const formData = new FormData();
     formData.set("keyword", keyword);
     formData.set("purpose", purpose);
+    formData.set("readerProfile", readerProfile);
+    formData.set("contentAngle", contentAngle);
     formData.set("writingGuideId", writingGuideId);
     formData.set("writingGuideNotes", writingGuideNotes);
     formData.set("newsReferences", JSON.stringify(newsItems));
@@ -120,17 +127,22 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
       </label>
       <section className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-sm font-semibold">네이버 뉴스 참고</h2><p className="mt-1 text-xs text-stone-600">키워드와 관련된 최신 기사 최대 10개를 확인하고, 참고할 항목만 선택하세요.</p></div>
-          <button type="button" onClick={handleNewsSearch} disabled={isSearchingNews} className="rounded-lg border border-sky-700 px-4 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingNews ? "뉴스 검색 중…" : "뉴스 검색"}</button>
+          <div><h2 className="text-sm font-semibold">자동 리서치</h2><p className="mt-1 text-xs text-stone-600">맛집·여행 같은 가이드형 키워드는 블로그 후기를, 최신 이슈는 뉴스를 우선 검색합니다.</p></div>
+          <button type="button" onClick={handleNewsSearch} disabled={isSearchingNews} className="rounded-lg border border-sky-700 px-4 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingNews ? "검색 중…" : "참고자료 검색"}</button>
         </div>
+        <fieldset className="mt-3 flex flex-wrap gap-3 text-sm"><legend className="sr-only">참고자료 종류</legend><label><input type="radio" name="researchSource" value="auto" checked={researchSource === "auto"} onChange={() => setResearchSource("auto")} /> 자동 선택</label><label><input type="radio" name="researchSource" value="blog" checked={researchSource === "blog"} onChange={() => setResearchSource("blog")} /> 블로그 후기</label><label><input type="radio" name="researchSource" value="news" checked={researchSource === "news"} onChange={() => setResearchSource("news")} /> 최신 뉴스</label></fieldset>
         {newsError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{newsError}</p>}
-        {newsItems.length >= 2 && <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-violet-950">작성 목적과 가이드를 기준으로 AI가 가장 쓸모 있는 기사 2개를 추천합니다.</p><button type="button" onClick={handleNewsRecommendation} disabled={isRecommendingNews} className="rounded-lg border border-violet-700 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isRecommendingNews ? "AI 추천 중…" : "AI 추천 받기"}</button></div>{newsRecommendationError && <p role="alert" className="mt-3 text-sm text-red-700">{newsRecommendationError}</p>}{newsRecommendations.length > 0 && <ul className="mt-3 space-y-2 text-sm text-violet-950">{newsRecommendations.map((recommendation, index) => { const item = newsItems.find((newsItem) => newsItem.sourceUrl === recommendation.sourceUrl); return item ? <li key={recommendation.sourceUrl} className="rounded bg-white p-3"><strong>{index + 1}. {item.title}</strong><p className="mt-1 text-violet-800">추천 이유: {recommendation.reason}</p></li> : null; })}</ul>}</div>}
-        {newsItems.length > 0 && <div className="mt-4 space-y-3">{newsItems.map((item) => <label key={item.sourceUrl} className="block cursor-pointer rounded-lg border border-sky-100 bg-white p-3"><div className="flex gap-3"><input type="checkbox" checked={selectedNewsUrls.includes(item.sourceUrl)} onChange={() => toggleNewsSelection(item.sourceUrl)} className="mt-1" /><span><a href={item.sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="font-semibold text-sky-800 hover:underline">{item.title}</a><span className="ml-2 text-xs text-stone-500">{item.publishedAt}</span><p className="mt-1 text-sm text-stone-600">{item.description}</p></span></div></label>)}</div>}
+        {newsItems.length >= 2 && <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-violet-950">작성 목적과 가이드를 기준으로 AI가 가장 쓸모 있는 참고자료 2개를 추천합니다.</p><button type="button" onClick={handleNewsRecommendation} disabled={isRecommendingNews} className="rounded-lg border border-violet-700 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isRecommendingNews ? "AI 추천 중…" : "AI 추천 받기"}</button></div>{newsRecommendationError && <p role="alert" className="mt-3 text-sm text-red-700">{newsRecommendationError}</p>}{newsRecommendations.length > 0 && <ul className="mt-3 space-y-2 text-sm text-violet-950">{newsRecommendations.map((recommendation, index) => { const item = newsItems.find((newsItem) => newsItem.sourceUrl === recommendation.sourceUrl); return item ? <li key={recommendation.sourceUrl} className="rounded bg-white p-3"><strong>{index + 1}. {item.title}</strong><p className="mt-1 text-violet-800">추천 이유: {recommendation.reason}</p></li> : null; })}</ul>}</div>}
+        {newsItems.length > 0 && <div className="mt-4 space-y-3">{newsItems.map((item) => <label key={item.sourceUrl} className="block cursor-pointer rounded-lg border border-sky-100 bg-white p-3"><div className="flex gap-3"><input type="checkbox" checked={selectedNewsUrls.includes(item.sourceUrl)} onChange={() => toggleNewsSelection(item.sourceUrl)} className="mt-1" /><span><span className="mr-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">{item.sourceType === "blog" ? "블로그 후기" : "최신 뉴스"}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="font-semibold text-sky-800 hover:underline">{item.title}</a><span className="ml-2 text-xs text-stone-500">{item.publishedAt}</span><p className="mt-1 text-sm text-stone-600">{item.description}</p></span></div></label>)}</div>}
       </section>
       <label className="block text-sm font-semibold">
         작성 목적
         <textarea name="purpose" required maxLength={1000} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="이 글로 전달하고 싶은 내용을 입력하세요." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-sm font-semibold">대상 독자 <span className="font-normal text-stone-500">(선택)</span><input value={readerProfile} onChange={(event) => setReaderProfile(event.target.value)} maxLength={500} placeholder="예: 처음 나트랑에 가는 아이 동반 가족" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
+        <label className="block text-sm font-semibold">기획 조건 <span className="font-normal text-stone-500">(선택)</span><input value={contentAngle} onChange={(event) => setContentAngle(event.target.value)} maxLength={1000} placeholder="예: 1인 2만원대, 시내 중심, 이동 동선 고려" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
+      </div>
       <fieldset>
         <legend className="text-sm font-semibold">글 길이</legend>
         <div className="mt-2 flex flex-wrap gap-4 text-sm">
