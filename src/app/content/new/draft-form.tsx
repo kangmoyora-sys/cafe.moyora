@@ -3,7 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
-import { generateAIDraft, recommendNaverNews, saveDraft, searchNaverNews, type DraftFormState, type NaverNewsItem, type NaverNewsRecommendation } from "./actions";
+import { generateAIDraft, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -33,6 +33,11 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   const [isRecommendingNews, startRecommendingNews] = useTransition();
   const [newsRecommendations, setNewsRecommendations] = useState<NaverNewsRecommendation[]>([]);
   const [newsRecommendationError, setNewsRecommendationError] = useState("");
+  const [isSearchingPlaces, startSearchingPlaces] = useTransition();
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeError, setPlaceError] = useState("");
+  const [placeResults, setPlaceResults] = useState<GooglePlace[]>([]);
+  const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const [researchSource, setResearchSource] = useState<"auto" | "blog" | "news">("auto");
   const [title, setTitle] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -60,6 +65,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     formData.set("writingGuideId", writingGuideId);
     formData.set("writingGuideNotes", writingGuideNotes);
     formData.set("newsReferences", JSON.stringify(newsItems.filter((item) => selectedNewsUrls.includes(item.sourceUrl))));
+    formData.set("googlePlaceId", selectedPlaceId);
 
     startGenerating(async () => {
       const result = await generateAIDraft(formData);
@@ -115,6 +121,21 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     setSelectedNewsUrls((current) => current.includes(sourceUrl) ? current.filter((url) => url !== sourceUrl) : [...current, sourceUrl]);
   }
 
+  function handlePlaceSearch() {
+    setPlaceError("");
+    startSearchingPlaces(async () => {
+      const result = await searchGooglePlaces(placeQuery);
+      if (result.error) {
+        setPlaceResults([]);
+        setSelectedPlaceId("");
+        setPlaceError(result.error);
+        return;
+      }
+      setPlaceResults(result.places);
+      setSelectedPlaceId("");
+    });
+  }
+
   return (
     <form action={formAction} className="max-w-2xl space-y-6 rounded-xl border border-stone-200 bg-white p-6">
       <label className="block text-sm font-semibold">
@@ -134,6 +155,18 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
         {newsError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{newsError}</p>}
         {newsItems.length >= 2 && <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-violet-950">작성 목적과 가이드를 기준으로 AI가 가장 쓸모 있는 참고자료 2개를 추천합니다.</p><button type="button" onClick={handleNewsRecommendation} disabled={isRecommendingNews} className="rounded-lg border border-violet-700 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isRecommendingNews ? "AI 추천 중…" : "AI 추천 받기"}</button></div>{newsRecommendationError && <p role="alert" className="mt-3 text-sm text-red-700">{newsRecommendationError}</p>}{newsRecommendations.length > 0 && <ul className="mt-3 space-y-2 text-sm text-violet-950">{newsRecommendations.map((recommendation, index) => { const item = newsItems.find((newsItem) => newsItem.sourceUrl === recommendation.sourceUrl); return item ? <li key={recommendation.sourceUrl} className="rounded bg-white p-3"><strong>{index + 1}. {item.title}</strong><p className="mt-1 text-violet-800">추천 이유: {recommendation.reason}</p></li> : null; })}</ul>}</div>}
         {newsItems.length > 0 && <div className="mt-4 space-y-3">{newsItems.map((item) => <label key={item.sourceUrl} className="block cursor-pointer rounded-lg border border-sky-100 bg-white p-3"><div className="flex gap-3"><input type="checkbox" checked={selectedNewsUrls.includes(item.sourceUrl)} onChange={() => toggleNewsSelection(item.sourceUrl)} className="mt-1" /><span><span className="mr-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">{item.sourceType === "blog" ? "블로그 후기" : "최신 뉴스"}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="font-semibold text-sky-800 hover:underline">{item.title}</a><span className="ml-2 text-xs text-stone-500">{item.publishedAt}</span><p className="mt-1 text-sm text-stone-600">{item.description}</p></span></div></label>)}</div>}
+      </section>
+      <section className="rounded-lg border border-amber-100 bg-amber-50/50 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-0 flex-1 text-sm font-semibold">
+            실제 장소 확인 <span className="font-normal text-stone-500">(선택)</span>
+            <input value={placeQuery} onChange={(event) => setPlaceQuery(event.target.value)} maxLength={150} placeholder="예: 깜란 엠어이 베트남" className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
+          </label>
+          <button type="button" onClick={handlePlaceSearch} disabled={isSearchingPlaces} className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingPlaces ? "장소 검색 중…" : "실제 장소 검색"}</button>
+        </div>
+        <p className="mt-2 text-xs text-stone-600">장소를 하나 선택하면 AI는 검색으로 확인된 장소명·주소·지도 링크만 사용할 수 있습니다. 선택하지 않으면 지도 링크를 만들지 않습니다.</p>
+        {placeError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{placeError}</p>}
+        {placeResults.length > 0 && <div className="mt-3 space-y-2">{placeResults.map((place) => <label key={place.id} className="flex cursor-pointer gap-3 rounded-lg border border-amber-100 bg-white p-3"><input type="radio" name="selectedGooglePlace" checked={selectedPlaceId === place.id} onChange={() => setSelectedPlaceId(place.id)} className="mt-1" /><span><strong>{place.name}</strong><p className="mt-1 text-sm text-stone-600">{place.formattedAddress}</p><a href={place.mapsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="mt-1 inline-block text-sm font-semibold text-amber-800 hover:underline">지도에서 확인</a></span></label>)}</div>}
       </section>
       <label className="block text-sm font-semibold">
         작성 목적
