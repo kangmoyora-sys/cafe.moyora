@@ -8,6 +8,9 @@ export type ContentDraft = {
   purpose: string;
   length: "short" | "medium" | "long";
   tone: "friendly_informative" | "practical_guide";
+  writing_guide_id: string | null;
+  writing_guide_title: string | null;
+  writing_guide_instructions: string | null;
   body: string;
   status: DraftStatus;
   created_at: string;
@@ -23,7 +26,7 @@ export async function getContentDrafts(limit?: number) {
 
   let query = supabase
     .from("content_drafts")
-    .select("id, user_id, title, keyword, purpose, length, tone, body, status, created_at, updated_at")
+    .select("id, user_id, title, keyword, purpose, length, tone, writing_guide_id, writing_guide_title, writing_guide_instructions, body, status, created_at, updated_at")
     .order("updated_at", { ascending: false });
 
   if (limit) query = query.limit(limit);
@@ -48,7 +51,7 @@ export async function getContentDraftById(id: string) {
 
   const { data, error } = await supabase
     .from("content_drafts")
-    .select("id, user_id, title, keyword, purpose, length, tone, body, status, created_at, updated_at")
+    .select("id, user_id, title, keyword, purpose, length, tone, writing_guide_id, writing_guide_title, writing_guide_instructions, body, status, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
