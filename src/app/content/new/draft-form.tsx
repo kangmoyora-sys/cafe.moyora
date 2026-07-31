@@ -3,7 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
-import { generateAIDraft, saveDraft, type DraftFormState } from "./actions";
+import { generateAIDraft, saveDraft, searchNaverNews, type DraftFormState, type NaverNewsItem } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -26,6 +26,10 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   const [isGenerating, startGenerating] = useTransition();
   const [generationMessage, setGenerationMessage] = useState("");
   const [generationError, setGenerationError] = useState("");
+  const [isSearchingNews, startSearchingNews] = useTransition();
+  const [newsError, setNewsError] = useState("");
+  const [newsItems, setNewsItems] = useState<NaverNewsItem[]>([]);
+  const [selectedNewsUrls, setSelectedNewsUrls] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [keyword, setKeyword] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -47,6 +51,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     formData.set("tone", tone);
     formData.set("writingGuideId", writingGuideId);
     formData.set("writingGuideNotes", writingGuideNotes);
+    formData.set("newsReferences", JSON.stringify(newsItems.filter((item) => selectedNewsUrls.includes(item.sourceUrl))));
 
     startGenerating(async () => {
       const result = await generateAIDraft(formData);
@@ -61,6 +66,23 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     });
   }
 
+  function handleNewsSearch() {
+    setNewsError("");
+    startSearchingNews(async () => {
+      const result = await searchNaverNews(keyword);
+      if (result.error) {
+        setNewsError(result.error);
+        return;
+      }
+      setNewsItems(result.items);
+      setSelectedNewsUrls([]);
+    });
+  }
+
+  function toggleNewsSelection(sourceUrl: string) {
+    setSelectedNewsUrls((current) => current.includes(sourceUrl) ? current.filter((url) => url !== sourceUrl) : [...current, sourceUrl]);
+  }
+
   return (
     <form action={formAction} className="max-w-2xl space-y-6 rounded-xl border border-stone-200 bg-white p-6">
       <label className="block text-sm font-semibold">
@@ -71,6 +93,14 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
         키워드
         <input name="keyword" required maxLength={100} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="예: 여름 가족여행" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
+      <section className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="text-sm font-semibold">네이버 뉴스 참고</h2><p className="mt-1 text-xs text-stone-600">키워드와 관련된 최근 기사 중 참고할 항목만 선택하세요.</p></div>
+          <button type="button" onClick={handleNewsSearch} disabled={isSearchingNews} className="rounded-lg border border-sky-700 px-4 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingNews ? "뉴스 검색 중…" : "뉴스 검색"}</button>
+        </div>
+        {newsError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{newsError}</p>}
+        {newsItems.length > 0 && <div className="mt-4 space-y-3">{newsItems.map((item) => <label key={item.sourceUrl} className="block cursor-pointer rounded-lg border border-sky-100 bg-white p-3"><div className="flex gap-3"><input type="checkbox" checked={selectedNewsUrls.includes(item.sourceUrl)} onChange={() => toggleNewsSelection(item.sourceUrl)} className="mt-1" /><span><a href={item.sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="font-semibold text-sky-800 hover:underline">{item.title}</a><span className="ml-2 text-xs text-stone-500">{item.publishedAt}</span><p className="mt-1 text-sm text-stone-600">{item.description}</p></span></div></label>)}</div>}
+      </section>
       <label className="block text-sm font-semibold">
         작성 목적
         <textarea name="purpose" required maxLength={1000} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="이 글로 전달하고 싶은 내용을 입력하세요." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
