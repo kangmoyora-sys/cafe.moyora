@@ -102,7 +102,11 @@ export async function GET(request: NextRequest) {
       updated_at: now,
       disconnected_at: null,
     }, { onConflict: "owner_user_id" });
-    if (error) return connectionFailed(request, "token-upsert-failed");
+    if (error) {
+      // The database error code identifies the failing class without logging data or secrets.
+      console.error("Naver OAuth callback failed", { stage: "token-upsert-failed", code: error.code });
+      return redirect(request, "/settings/naver?notice=connection-failed");
+    }
 
     return redirect(request, "/settings/naver?notice=connected");
   } catch {
