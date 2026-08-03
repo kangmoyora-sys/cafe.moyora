@@ -187,15 +187,19 @@ export async function generateContentImage(prompt: string, provider: ImageGenera
       return { image: { id: `generated-${crypto.randomUUID()}`, dataUrl: `data:image/png;base64,${base64}`, alt: imagePrompt.slice(0, 300), provider } };
     }
 
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent", {
       method: "POST",
       headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-3.1-flash-image", input: [{ type: "text", text: imagePrompt }], response_format: { type: "image", mime_type: "image/png", aspect_ratio: "1:1", image_size: "1K" } }),
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: imagePrompt }] }],
+        generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "1:1", imageSize: "1K" } },
+      }),
     });
     if (!response.ok) return { error: "Gemini 이미지 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-    const payload = await response.json() as { output_image?: { data?: unknown; mime_type?: unknown } };
-    const base64 = payload.output_image?.data;
-    const mimeType = payload.output_image?.mime_type;
+    const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: unknown; mimeType?: unknown } }> } }> };
+    const imagePart = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).find((part) => part.inlineData)?.inlineData;
+    const base64 = imagePart?.data;
+    const mimeType = imagePart?.mimeType;
     if (typeof base64 !== "string" || !base64 || !["image/png", "image/jpeg", "image/webp"].includes(String(mimeType))) return { error: "Gemini 생성 이미지를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
     return { image: { id: `generated-${crypto.randomUUID()}`, dataUrl: `data:${mimeType};base64,${base64}`, alt: imagePrompt.slice(0, 300), provider } };
   } catch {
