@@ -58,6 +58,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [openaiModel, setOpenAIModel] = useState(textModels[0] ?? "");
   const [body, setBody] = useState("");
   const [imageQuery, setImageQuery] = useState("");
+  const [imageSearchQueries, setImageSearchQueries] = useState<string[]>([]);
   const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<ContentImage[]>([]);
   const [imagePrompt, setImagePrompt] = useState("");
@@ -93,7 +94,21 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
 
       setTitle(result.title ?? "");
       setBody(result.body ?? "");
-      setGenerationMessage(`${result.model ?? "GPT"} 초안이 입력되었습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
+      const suggestedQueries = result.imageSearchQueries ?? [];
+      const suggestedQuery = suggestedQueries[0] ?? keyword.trim();
+      setImageSearchQueries(suggestedQueries);
+      setImageQuery(suggestedQuery);
+      setImagePrompt(result.imageGenerationPrompt ?? "");
+      if (suggestedQuery) {
+        const imageResult = await searchPexelsImages(suggestedQuery);
+        if (imageResult.error) {
+          setPexelsImages([]);
+          setImageError(imageResult.error);
+        } else {
+          setPexelsImages(imageResult.images);
+        }
+      }
+      setGenerationMessage(`${result.model ?? "GPT"} 초안과 본문 기반 이미지 추천을 준비했습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
     });
   }
 
@@ -185,8 +200,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     setSelectedImages((current) => current.filter((image) => image.id !== imageId));
   }
 
-  function handleImageSearch() {
-    const query = imageQuery.trim() || keyword.trim();
+  function searchRecommendedImages(query: string) {
     setImageError("");
     if (!query) {
       setImageError("키워드 또는 이미지 검색어를 입력해 주세요.");
@@ -201,6 +215,10 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       }
       setPexelsImages(result.images);
     });
+  }
+
+  function handleImageSearch() {
+    searchRecommendedImages(imageQuery.trim() || keyword.trim());
   }
 
   async function uploadImage(file: File, kind: "local" | "generated", alt: string) {
@@ -334,8 +352,9 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
         <div>
           <h2 className="text-sm font-semibold">글에 사용할 이미지</h2>
-          <p className="mt-1 text-xs text-stone-600">Pexels 추천 이미지는 출처를 함께 기록합니다. 직접 올린 이미지와 AI 생성 이미지는 내 전용 보관함에 저장됩니다.</p>
+          <p className="mt-1 text-xs text-stone-600">AI 초안을 만들면 본문 맥락에 맞는 Pexels 이미지가 자동 추천됩니다. 직접 올린 이미지와 AI 생성 이미지는 내 전용 보관함에 저장됩니다.</p>
         </div>
+        {imageSearchQueries.length > 0 && <div className="mt-4 rounded-lg border border-rose-200 bg-white p-3"><p className="text-sm font-semibold text-rose-950">AI 추천 이미지 검색어</p><div className="mt-2 flex flex-wrap gap-2">{imageSearchQueries.map((query) => <button key={query} type="button" onClick={() => { setImageQuery(query); searchRecommendedImages(query); }} disabled={isSearchingImages} className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-60">{query}</button>)}</div></div>}
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="min-w-0 flex-1 text-sm font-semibold">
             이미지 검색어 <span className="font-normal text-stone-500">(비워 두면 키워드 사용)</span>
@@ -358,6 +377,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
             AI 이미지 생성 설명
             <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} maxLength={1000} placeholder="예: 밝은 아침 햇살의 나트랑 해변 카페 외관, 여행 매거진 사진 스타일, 글자 없음" rows={3} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
           </label>
+          <p className="mt-2 text-xs text-stone-600">AI 초안을 만들면 본문에 맞는 생성 설명이 자동 추천됩니다. 내용을 확인·수정한 뒤 생성하세요.</p>
           <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : "GPT 이미지 2로 생성"}</button>
         </div>
         <div className="mt-5 border-t border-rose-100 pt-4">

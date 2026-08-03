@@ -32,8 +32,13 @@ export async function generateStructuredText(model: string, systemInstruction: s
           schema: {
             type: "object",
             additionalProperties: false,
-            properties: { title: { type: "string" }, body: { type: "string" } },
-            required: ["title", "body"],
+            properties: {
+              title: { type: "string" },
+              body: { type: "string" },
+              imageSearchQueries: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 3 },
+              imageGenerationPrompt: { type: "string" },
+            },
+            required: ["title", "body", "imageSearchQueries", "imageGenerationPrompt"],
           },
         },
       },
