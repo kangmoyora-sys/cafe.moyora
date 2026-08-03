@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
 import type { ContentImage } from "@/lib/content-images";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { findPlacesFromReferences, generateAIDraft, generateContentImage, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type ImageGenerationProvider, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
+import { findPlacesFromReferences, generateAIDraft, generateContentImage, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -61,7 +61,6 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<ContentImage[]>([]);
   const [imagePrompt, setImagePrompt] = useState("");
-  const [imageProvider, setImageProvider] = useState<ImageGenerationProvider>("openai");
   const [imageError, setImageError] = useState("");
   const [isSearchingImages, startSearchingImages] = useTransition();
   const [isGeneratingImage, startGeneratingImage] = useTransition();
@@ -238,7 +237,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   function handleImageGeneration() {
     setImageError("");
     startGeneratingImage(async () => {
-      const result = await generateContentImage(imagePrompt, imageProvider);
+      const result = await generateContentImage(imagePrompt);
       if (result.error || !result.image) {
         setImageError(result.error ?? "AI 생성 이미지를 처리하지 못했습니다.");
         return;
@@ -354,18 +353,12 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
           })}
         </div>}
         <div className="mt-5 border-t border-rose-100 pt-4">
-          <fieldset>
-            <legend className="text-sm font-semibold">AI 이미지 생성 모델</legend>
-            <div className="mt-2 flex flex-wrap gap-4 text-sm">
-              <label><input type="radio" name="imageProvider" value="openai" checked={imageProvider === "openai"} onChange={() => setImageProvider("openai")} /> GPT 이미지 2</label>
-              <label><input type="radio" name="imageProvider" value="gemini" checked={imageProvider === "gemini"} onChange={() => setImageProvider("gemini")} /> Gemini 나노바나나 2</label>
-            </div>
-          </fieldset>
+          <p className="text-sm font-semibold">AI 이미지 생성 모델: GPT 이미지 2</p>
           <label className="block text-sm font-semibold">
             AI 이미지 생성 설명
             <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} maxLength={1000} placeholder="예: 밝은 아침 햇살의 나트랑 해변 카페 외관, 여행 매거진 사진 스타일, 글자 없음" rows={3} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
           </label>
-          <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : `${imageProvider === "openai" ? "GPT 이미지 2" : "나노바나나 2"}로 생성`}</button>
+          <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : "GPT 이미지 2로 생성"}</button>
         </div>
         <div className="mt-5 border-t border-rose-100 pt-4">
           <label className="block text-sm font-semibold">

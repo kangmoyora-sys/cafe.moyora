@@ -24,8 +24,7 @@ export type GooglePlacesSearchResult = { places: GooglePlace[]; error?: string }
 export type ReferencePlacesSearchResult = { places: GooglePlace[]; error?: string };
 export type PexelsImage = { id: string; url: string; alt: string; attribution: string; attributionUrl: string };
 export type PexelsImageSearchResult = { images: PexelsImage[]; error?: string };
-export type ImageGenerationProvider = "openai" | "gemini";
-export type GeneratedImageResult = { image?: { id: string; dataUrl: string; alt: string; provider: ImageGenerationProvider }; error?: string };
+export type GeneratedImageResult = { image?: { id: string; dataUrl: string; alt: string; provider: "openai" }; error?: string };
 
 type WritingGuideValue = {
   id: string | null;
@@ -161,47 +160,27 @@ export async function searchPexelsImages(query: string): Promise<PexelsImageSear
   }
 }
 
-export async function generateContentImage(prompt: string, provider: ImageGenerationProvider): Promise<GeneratedImageResult> {
+export async function generateContentImage(prompt: string): Promise<GeneratedImageResult> {
   const user = await getCurrentUser();
   if (!user) return { error: "로그인 후 이미지 생성을 이용해 주세요." };
   const imagePrompt = prompt.trim();
   if (!imagePrompt || imagePrompt.length > 1000) return { error: "이미지 설명을 1~1000자로 입력해 주세요." };
-  if (provider !== "openai" && provider !== "gemini") return { error: "유효한 이미지 생성 모델을 선택해 주세요." };
   if (process.env.AI_GENERATION_ENABLED !== "true") return { error: "AI 이미지 생성은 아직 설정되지 않았습니다." };
-  if (provider === "openai" && !process.env.OPENAI_API_KEY) return { error: "GPT 이미지 생성은 아직 설정되지 않았습니다." };
-  if (provider === "gemini" && !process.env.GEMINI_API_KEY) return { error: "Gemini 이미지 생성은 아직 설정되지 않았습니다." };
+  if (!process.env.OPENAI_API_KEY) return { error: "GPT 이미지 생성은 아직 설정되지 않았습니다." };
   const accessError = await requireResearchAccess(user.id);
   if (accessError) return { error: accessError.replace("검색", "이미지 생성") };
 
   try {
-    if (provider === "openai") {
-      const response = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gpt-image-2", prompt: imagePrompt, size: "1024x1024", output_format: "png" }),
-      });
-      if (!response.ok) return { error: "GPT 이미지 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-      const payload = await response.json() as { data?: Array<{ b64_json?: unknown }> };
-      const base64 = payload.data?.[0]?.b64_json;
-      if (typeof base64 !== "string" || !base64) return { error: "GPT 생성 이미지를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
-      return { image: { id: `generated-${crypto.randomUUID()}`, dataUrl: `data:image/png;base64,${base64}`, alt: imagePrompt.slice(0, 300), provider } };
-    }
-
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent", {
+    const response = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
-      headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: imagePrompt }] }],
-        generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "1:1", imageSize: "1K" } },
-      }),
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-image-2", prompt: imagePrompt, size: "1024x1024", output_format: "png" }),
     });
-    if (!response.ok) return { error: "Gemini 이미지 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-    const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: unknown; mimeType?: unknown } }> } }> };
-    const imagePart = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).find((part) => part.inlineData)?.inlineData;
-    const base64 = imagePart?.data;
-    const mimeType = imagePart?.mimeType;
-    if (typeof base64 !== "string" || !base64 || !["image/png", "image/jpeg", "image/webp"].includes(String(mimeType))) return { error: "Gemini 생성 이미지를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
-    return { image: { id: `generated-${crypto.randomUUID()}`, dataUrl: `data:${mimeType};base64,${base64}`, alt: imagePrompt.slice(0, 300), provider } };
+    if (!response.ok) return { error: "GPT 이미지 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+    const payload = await response.json() as { data?: Array<{ b64_json?: unknown }> };
+    const base64 = payload.data?.[0]?.b64_json;
+    if (typeof base64 !== "string" || !base64) return { error: "GPT 생성 이미지를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+    return { image: { id: `generated-${crypto.randomUUID()}`, dataUrl: `data:image/png;base64,${base64}`, alt: imagePrompt.slice(0, 300), provider: "openai" } };
   } catch {
     return { error: "AI 이미지 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }
