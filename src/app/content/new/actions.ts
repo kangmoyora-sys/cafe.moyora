@@ -556,7 +556,8 @@ export async function recommendNaverNews(formData: FormData): Promise<NaverNewsR
 
 function getGeneratedContent(content: string, allowedGoogleMapsUrls: Set<string>, provider: AIProvider): AIDraftResult {
   try {
-    const parsed = JSON.parse(content) as { title?: unknown; body?: unknown };
+    const json = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const parsed = JSON.parse(json) as { title?: unknown; body?: unknown };
     if (typeof parsed.title !== "string" || typeof parsed.body !== "string") throw new Error("Invalid response shape");
     const title = parsed.title.trim();
     const body = parsed.body.trim();
