@@ -3,7 +3,9 @@
 import { useActionState, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
-import { findPlacesFromReferences, generateAIDraft, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation } from "./actions";
+import type { ContentImage } from "@/lib/content-images";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { findPlacesFromReferences, generateAIDraft, generateContentImage, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -53,7 +55,16 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   const [tone, setTone] = useState("friendly_informative");
   const [writingGuideId, setWritingGuideId] = useState("");
   const [writingGuideNotes, setWritingGuideNotes] = useState("");
+  const [aiProvider, setAiProvider] = useState<"openai" | "gemini">("openai");
   const [body, setBody] = useState("");
+  const [imageQuery, setImageQuery] = useState("");
+  const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
+  const [selectedImages, setSelectedImages] = useState<ContentImage[]>([]);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageError, setImageError] = useState("");
+  const [isSearchingImages, startSearchingImages] = useTransition();
+  const [isGeneratingImage, startGeneratingImage] = useTransition();
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   function handleAIGeneration() {
     if ((title.trim() || body.trim()) && !window.confirm("AI 생성 결과가 현재 제목과 본문을 덮어씁니다. 계속할까요?")) return;
@@ -71,6 +82,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     formData.set("writingGuideNotes", writingGuideNotes);
     formData.set("newsReferences", JSON.stringify(newsItems.filter((item) => selectedNewsUrls.includes(item.sourceUrl))));
     formData.set("googlePlaceIds", JSON.stringify(selectedPlaceIds));
+    formData.set("aiProvider", aiProvider);
 
     startGenerating(async () => {
       const result = await generateAIDraft(formData);
@@ -81,7 +93,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
 
       setTitle(result.title ?? "");
       setBody(result.body ?? "");
-      setGenerationMessage("AI 초안이 입력되었습니다. 사실관계와 최신 정보는 반드시 검토하세요.");
+      setGenerationMessage(`${result.provider === "gemini" ? "Gemini" : "OpenAI"} 초안이 입력되었습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
     });
   }
 
@@ -157,8 +169,88 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     setSelectedPlaceIds((current) => current.includes(placeId) ? current.filter((id) => id !== placeId) : [...current, placeId]);
   }
 
+  function addImage(image: ContentImage) {
+    setImageError("");
+    setSelectedImages((current) => {
+      if (current.some((item) => item.id === image.id || item.url === image.url)) return current;
+      if (current.length >= 8) {
+        setImageError("글에는 이미지 8장까지 선택할 수 있습니다.");
+        return current;
+      }
+      return [...current, image];
+    });
+  }
+
+  function removeImage(imageId: string) {
+    setSelectedImages((current) => current.filter((image) => image.id !== imageId));
+  }
+
+  function handleImageSearch() {
+    const query = imageQuery.trim() || keyword.trim();
+    setImageError("");
+    if (!query) {
+      setImageError("키워드 또는 이미지 검색어를 입력해 주세요.");
+      return;
+    }
+    startSearchingImages(async () => {
+      const result = await searchPexelsImages(query);
+      if (result.error) {
+        setPexelsImages([]);
+        setImageError(result.error);
+        return;
+      }
+      setPexelsImages(result.images);
+    });
+  }
+
+  async function uploadImage(file: File, kind: "local" | "generated", alt: string) {
+    if (!file.type || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setImageError("JPG, PNG, WebP 이미지만 추가할 수 있습니다.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setImageError("이미지는 5MB 이하만 추가할 수 있습니다.");
+      return;
+    }
+
+    setImageError("");
+    setIsUploadingImage(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("로그인 정보를 확인할 수 없습니다.");
+      const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/webp" ? "webp" : "png";
+      const imageId = `${kind}-${crypto.randomUUID()}`;
+      const path = `${user.id}/${imageId}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("content-images").upload(path, file, { contentType: file.type, upsert: false });
+      if (uploadError) throw new Error("이미지 저장소에 업로드하지 못했습니다.");
+      const { data } = supabase.storage.from("content-images").getPublicUrl(path);
+      if (!data.publicUrl.startsWith("https://")) throw new Error("이미지 주소를 만들지 못했습니다.");
+      addImage({ id: imageId, kind, url: data.publicUrl, alt: alt.trim().slice(0, 300) || "콘텐츠 이미지" });
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : "이미지를 추가하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }
+
+  function handleImageGeneration() {
+    setImageError("");
+    startGeneratingImage(async () => {
+      const result = await generateContentImage(imagePrompt);
+      if (result.error || !result.image) {
+        setImageError(result.error ?? "AI 생성 이미지를 처리하지 못했습니다.");
+        return;
+      }
+      const response = await fetch(result.image.dataUrl);
+      const blob = await response.blob();
+      await uploadImage(new File([blob], "generated-image.png", { type: "image/png" }), "generated", result.image.alt);
+    });
+  }
+
   return (
     <form action={formAction} className="max-w-2xl space-y-6 rounded-xl border border-stone-200 bg-white p-6">
+      <input type="hidden" name="images" value={JSON.stringify(selectedImages)} />
       <label className="block text-sm font-semibold">
         제목
         <input name="title" required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="예: 아이와 함께 떠나는 여름 여행" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
@@ -229,6 +321,52 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
           <textarea name="writingGuideNotes" maxLength={2000} value={writingGuideNotes} onChange={(event) => setWritingGuideNotes(event.target.value)} placeholder="예: 초보자도 바로 실행할 수 있도록 체크리스트를 포함해 주세요." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
         </label>
         <p className="mt-2 text-xs text-stone-600">선택한 가이드는 AI 초안 생성과 저장되는 초안에 함께 적용됩니다. 가이드는 관리자 화면에서 관리할 수 있습니다.</p>
+      </section>
+      <fieldset className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+        <legend className="px-1 text-sm font-semibold">글 생성 AI</legend>
+        <p className="text-xs text-stone-600">같은 기획 조건으로 OpenAI 또는 Gemini를 선택해 결과를 비교할 수 있습니다. 설정되지 않은 서비스는 생성 시 안전하게 안내됩니다.</p>
+        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <label><input type="radio" name="aiProvider" value="openai" checked={aiProvider === "openai"} onChange={() => setAiProvider("openai")} /> OpenAI</label>
+          <label><input type="radio" name="aiProvider" value="gemini" checked={aiProvider === "gemini"} onChange={() => setAiProvider("gemini")} /> Google Gemini</label>
+        </div>
+      </fieldset>
+      <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
+        <div>
+          <h2 className="text-sm font-semibold">글에 사용할 이미지</h2>
+          <p className="mt-1 text-xs text-stone-600">Pexels 추천 이미지는 출처를 함께 기록합니다. 직접 올린 이미지와 AI 생성 이미지는 내 전용 보관함에 저장됩니다.</p>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="min-w-0 flex-1 text-sm font-semibold">
+            이미지 검색어 <span className="font-normal text-stone-500">(비워 두면 키워드 사용)</span>
+            <input value={imageQuery} onChange={(event) => setImageQuery(event.target.value)} maxLength={200} placeholder="예: 나트랑 해변 카페" className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
+          </label>
+          <button type="button" onClick={handleImageSearch} disabled={isSearchingImages} className="rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingImages ? "추천 찾는 중…" : "이미지 추천"}</button>
+        </div>
+        {pexelsImages.length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {pexelsImages.map((image) => {
+            const selected = selectedImages.some((selectedImage) => selectedImage.id === image.id);
+            return <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white">
+              <img src={image.url} alt={image.alt} className="h-36 w-full object-cover" />
+              <div className="p-3"><p className="line-clamp-2 text-xs text-stone-600">{image.alt}</p><a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a><button type="button" onClick={() => selected ? removeImage(image.id) : addImage({ ...image, kind: "pexels" })} className="mt-3 rounded border border-rose-700 px-3 py-1.5 text-xs font-bold text-rose-800 hover:bg-rose-50">{selected ? "선택 해제" : "이 이미지 선택"}</button></div>
+            </article>;
+          })}
+        </div>}
+        <div className="mt-5 border-t border-rose-100 pt-4">
+          <label className="block text-sm font-semibold">
+            AI 이미지 생성 설명
+            <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} maxLength={1000} placeholder="예: 밝은 아침 햇살의 나트랑 해변 카페 외관, 여행 매거진 사진 스타일, 글자 없음" rows={3} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
+          </label>
+          <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : "AI 이미지 생성"}</button>
+        </div>
+        <div className="mt-5 border-t border-rose-100 pt-4">
+          <label className="block text-sm font-semibold">
+            내 이미지 추가
+            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={isUploadingImage} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, "local", file.name.replace(/\.[^.]+$/, "")); event.currentTarget.value = ""; }} className="mt-2 block w-full text-sm text-stone-700 file:mr-4 file:rounded-lg file:border-0 file:bg-rose-100 file:px-3 file:py-2 file:text-sm file:font-bold file:text-rose-800 hover:file:bg-rose-200" />
+          </label>
+          <p className="mt-2 text-xs text-stone-600">JPG, PNG, WebP · 한 장당 5MB 이하</p>
+        </div>
+        {imageError && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{imageError}</p>}
+        {selectedImages.length > 0 && <div className="mt-5 border-t border-rose-100 pt-4"><p className="text-sm font-semibold text-rose-950">선택한 이미지 {selectedImages.length}/8</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{selectedImages.map((image) => <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white"><img src={image.url} alt={image.alt} className="h-36 w-full object-cover" /><div className="p-3"><p className="text-xs text-stone-600">{image.kind === "pexels" ? "Pexels 추천" : image.kind === "generated" ? "AI 생성" : "내 이미지"}</p><p className="mt-1 line-clamp-2 text-xs text-stone-600">{image.alt}</p>{image.attribution && image.attributionUrl && <a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a>}<button type="button" onClick={() => removeImage(image.id)} className="mt-3 text-xs font-bold text-red-700 hover:underline">제거</button></div></article>)}</div></div>}
       </section>
       <label className="block text-sm font-semibold">
         본문

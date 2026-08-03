@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { readContentImages, type ContentImage } from "@/lib/content-images";
 
 export type ContentDraft = {
   id: string;
@@ -8,6 +9,8 @@ export type ContentDraft = {
   purpose: string;
   length: "short" | "medium" | "long";
   tone: "friendly_informative" | "practical_guide";
+  ai_provider: "openai" | "gemini";
+  images: ContentImage[];
   writing_guide_id: string | null;
   writing_guide_title: string | null;
   writing_guide_instructions: string | null;
@@ -26,7 +29,7 @@ export async function getContentDrafts(limit?: number) {
 
   let query = supabase
     .from("content_drafts")
-    .select("id, user_id, title, keyword, purpose, length, tone, writing_guide_id, writing_guide_title, writing_guide_instructions, body, status, created_at, updated_at")
+    .select("id, user_id, title, keyword, purpose, length, tone, ai_provider, images, writing_guide_id, writing_guide_title, writing_guide_instructions, body, status, created_at, updated_at")
     .order("updated_at", { ascending: false });
 
   if (limit) query = query.limit(limit);
@@ -34,7 +37,7 @@ export async function getContentDrafts(limit?: number) {
   const { data, error } = await query;
   if (error) return [] as ContentDraft[];
 
-  return data as ContentDraft[];
+  return data.map((draft) => ({ ...draft, images: readContentImages(draft.images) })) as ContentDraft[];
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -51,12 +54,12 @@ export async function getContentDraftById(id: string) {
 
   const { data, error } = await supabase
     .from("content_drafts")
-    .select("id, user_id, title, keyword, purpose, length, tone, writing_guide_id, writing_guide_title, writing_guide_instructions, body, status, created_at, updated_at")
+    .select("id, user_id, title, keyword, purpose, length, tone, ai_provider, images, writing_guide_id, writing_guide_title, writing_guide_instructions, body, status, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
   if (error || !data) return null;
-  return data as ContentDraft;
+  return { ...data, images: readContentImages(data.images) } as ContentDraft;
 }
 
 export function formatDraftDate(value: string) {
