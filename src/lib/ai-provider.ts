@@ -55,17 +55,7 @@ export async function generateStructuredText(provider: AIProvider, systemInstruc
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemInstruction }] },
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            body: { type: "string" },
-          },
-          required: ["title", "body"],
-        },
-      },
+      generationConfig: { responseMimeType: "application/json" },
     }),
   });
   if (!response.ok) throw new Error("Gemini 초안 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.");
