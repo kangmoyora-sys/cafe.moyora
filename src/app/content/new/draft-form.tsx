@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
 import type { ContentImage } from "@/lib/content-images";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { findPlacesFromReferences, generateAIDraft, generateContentImage, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
+import { findPlacesFromReferences, generateAIDraft, generateContentImage, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type ImageGenerationProvider, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -27,7 +27,7 @@ function SubmitButton() {
   );
 }
 
-export function DraftForm({ guides }: { guides: ContentGuide[] }) {
+export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; textModels: string[] }) {
   const [state, formAction] = useActionState(saveDraft, initialState);
   const [isGenerating, startGenerating] = useTransition();
   const [generationMessage, setGenerationMessage] = useState("");
@@ -55,12 +55,13 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   const [tone, setTone] = useState("friendly_informative");
   const [writingGuideId, setWritingGuideId] = useState("");
   const [writingGuideNotes, setWritingGuideNotes] = useState("");
-  const [aiProvider, setAiProvider] = useState<"openai" | "gemini">("openai");
+  const [openaiModel, setOpenAIModel] = useState(textModels[0] ?? "");
   const [body, setBody] = useState("");
   const [imageQuery, setImageQuery] = useState("");
   const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<ContentImage[]>([]);
   const [imagePrompt, setImagePrompt] = useState("");
+  const [imageProvider, setImageProvider] = useState<ImageGenerationProvider>("openai");
   const [imageError, setImageError] = useState("");
   const [isSearchingImages, startSearchingImages] = useTransition();
   const [isGeneratingImage, startGeneratingImage] = useTransition();
@@ -82,7 +83,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
     formData.set("writingGuideNotes", writingGuideNotes);
     formData.set("newsReferences", JSON.stringify(newsItems.filter((item) => selectedNewsUrls.includes(item.sourceUrl))));
     formData.set("googlePlaceIds", JSON.stringify(selectedPlaceIds));
-    formData.set("aiProvider", aiProvider);
+    formData.set("openaiModel", openaiModel);
 
     startGenerating(async () => {
       const result = await generateAIDraft(formData);
@@ -93,7 +94,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
 
       setTitle(result.title ?? "");
       setBody(result.body ?? "");
-      setGenerationMessage(`${result.provider === "gemini" ? "Gemini" : "OpenAI"} 초안이 입력되었습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
+      setGenerationMessage(`${result.model ?? "GPT"} 초안이 입력되었습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
     });
   }
 
@@ -237,7 +238,7 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
   function handleImageGeneration() {
     setImageError("");
     startGeneratingImage(async () => {
-      const result = await generateContentImage(imagePrompt);
+      const result = await generateContentImage(imagePrompt, imageProvider);
       if (result.error || !result.image) {
         setImageError(result.error ?? "AI 생성 이미지를 처리하지 못했습니다.");
         return;
@@ -322,14 +323,15 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
         </label>
         <p className="mt-2 text-xs text-stone-600">선택한 가이드는 AI 초안 생성과 저장되는 초안에 함께 적용됩니다. 가이드는 관리자 화면에서 관리할 수 있습니다.</p>
       </section>
-      <fieldset className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
-        <legend className="px-1 text-sm font-semibold">글 생성 AI</legend>
-        <p className="text-xs text-stone-600">같은 기획 조건으로 OpenAI 또는 Gemini를 선택해 결과를 비교할 수 있습니다. 설정되지 않은 서비스는 생성 시 안전하게 안내됩니다.</p>
-        <div className="mt-3 flex flex-wrap gap-4 text-sm">
-          <label><input type="radio" name="aiProvider" value="openai" checked={aiProvider === "openai"} onChange={() => setAiProvider("openai")} /> OpenAI</label>
-          <label><input type="radio" name="aiProvider" value="gemini" checked={aiProvider === "gemini"} onChange={() => setAiProvider("gemini")} /> Google Gemini</label>
-        </div>
-      </fieldset>
+      <section className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+        <label className="block text-sm font-semibold">
+          글 생성 GPT 모델
+          <select value={openaiModel} onChange={(event) => setOpenAIModel(event.target.value)} disabled={textModels.length === 0} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:opacity-60">
+            {textModels.length === 0 ? <option value="">설정된 GPT 모델이 없습니다</option> : textModels.map((model) => <option key={model} value={model}>{model}</option>)}
+          </select>
+        </label>
+        <p className="mt-2 text-xs text-stone-600">글 초안은 GPT만 사용합니다. 모델 목록은 서버 전용 환경변수로 관리됩니다.</p>
+      </section>
       <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
         <div>
           <h2 className="text-sm font-semibold">글에 사용할 이미지</h2>
@@ -352,11 +354,18 @@ export function DraftForm({ guides }: { guides: ContentGuide[] }) {
           })}
         </div>}
         <div className="mt-5 border-t border-rose-100 pt-4">
+          <fieldset>
+            <legend className="text-sm font-semibold">AI 이미지 생성 모델</legend>
+            <div className="mt-2 flex flex-wrap gap-4 text-sm">
+              <label><input type="radio" name="imageProvider" value="openai" checked={imageProvider === "openai"} onChange={() => setImageProvider("openai")} /> GPT 이미지 2</label>
+              <label><input type="radio" name="imageProvider" value="gemini" checked={imageProvider === "gemini"} onChange={() => setImageProvider("gemini")} /> Gemini 나노바나나 2</label>
+            </div>
+          </fieldset>
           <label className="block text-sm font-semibold">
             AI 이미지 생성 설명
             <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} maxLength={1000} placeholder="예: 밝은 아침 햇살의 나트랑 해변 카페 외관, 여행 매거진 사진 스타일, 글자 없음" rows={3} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
           </label>
-          <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : "AI 이미지 생성"}</button>
+          <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : `${imageProvider === "openai" ? "GPT 이미지 2" : "나노바나나 2"}로 생성`}</button>
         </div>
         <div className="mt-5 border-t border-rose-100 pt-4">
           <label className="block text-sm font-semibold">
