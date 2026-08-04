@@ -17,13 +17,10 @@ function escapeHtml(value: string) {
 
 function createPublishingPackage({ title, body, images }: { title: string; body: string; images: ContentImage[] }) {
   const sections = makeContentSections(body, images);
-  let imageNumber = 0;
-
   return `${title}\n\n${sections.map((section) => {
     const paragraph = section.paragraph;
     const inlineImages = section.images.map((image) => {
-      imageNumber += 1;
-      return `🖼️ 이미지 ${imageNumber}: ${image.alt}\n${image.url}`;
+      return image.url;
     }).join("\n\n");
     return inlineImages ? `${paragraph}\n\n${inlineImages}` : paragraph;
   }).join("\n\n")}`;
@@ -31,14 +28,9 @@ function createPublishingPackage({ title, body, images }: { title: string; body:
 
 function createPublishingHtml({ title, body, images }: { title: string; body: string; images: ContentImage[] }) {
   const sections = makeContentSections(body, images);
-  let imageNumber = 0;
-
   const content = sections.map((section) => {
     const paragraph = `<p>${escapeHtml(section.paragraph).replace(/\n/g, "<br>")}</p>`;
-    const inlineImages = section.images.map((image) => {
-      imageNumber += 1;
-      return `<figure><img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt)}"><figcaption>이미지 ${imageNumber}: ${escapeHtml(image.alt)}</figcaption></figure>`;
-    }).join("");
+    const inlineImages = section.images.map((image) => `<figure><img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt)}"></figure>`).join("");
     return `${paragraph}${inlineImages}`;
   }).join("");
 
@@ -86,10 +78,7 @@ export function PublishingKit({ title, body, images }: { title: string; body: st
     <section className="mt-5 space-y-5 rounded-lg border border-emerald-100 bg-white p-5">
       <p className="text-sm font-semibold text-stone-900">붙여넣기 미리보기</p>
       <h4 className="text-xl font-bold text-stone-950">{title}</h4>
-      {sections.map((section, sectionIndex) => <div key={`${section.paragraph}-${sectionIndex}`} className="space-y-4"><p className="whitespace-pre-wrap leading-7 text-stone-800">{section.paragraph}</p>{section.images.map((image, imageIndex) => {
-        const number = sections.slice(0, sectionIndex).reduce((total, previous) => total + previous.images.length, 0) + imageIndex + 1;
-        return <figure key={image.id} className="overflow-hidden rounded-lg border border-stone-200"><img src={image.url} alt={image.alt} className="max-h-96 w-full object-cover" /><figcaption className="p-3 text-xs text-stone-600">이미지 {number}: {image.alt}</figcaption></figure>;
-      })}</div>)}
+      {sections.map((section, sectionIndex) => <div key={`${section.paragraph}-${sectionIndex}`} className="space-y-4"><p className="whitespace-pre-wrap leading-7 text-stone-800">{section.paragraph}</p>{section.images.map((image) => <figure key={image.id} className="overflow-hidden rounded-lg border border-stone-200"><img src={image.url} alt={image.alt} className="max-h-96 w-full object-cover" /></figure>)}</div>)}
     </section>
     <button type="button" onClick={copyPackage} className="mt-5 rounded-lg bg-emerald-700 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-800">{destinationLabels[destination]}용 통합 초안 복사</button>
     {message && <p role="status" className="mt-3 text-sm font-medium text-emerald-900">{message}</p>}
