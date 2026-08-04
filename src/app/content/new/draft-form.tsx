@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
 import type { ContentImage } from "@/lib/content-images";
+import { makeContentSections } from "@/lib/content-image-placement";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { findPlacesFromReferences, generateAIDraft, generateContentImage, importGoogleMapsLinks, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
 
@@ -230,6 +231,8 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   }
 
   const bodyParagraphs = body.trim().split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  const bodyPreviewSections = makeContentSections(body, selectedImages);
+  const personalImages = selectedImages.filter((image) => image.kind === "local");
 
   function searchRecommendedImages(query: string) {
     setImageError("");
@@ -319,7 +322,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         <p className="mt-2 text-xs text-stone-600">공개 웹페이지의 제목·요약을 읽어 참고합니다. 로그인해야 보이는 글이나 짧은 링크는 메모에 핵심 내용을 함께 적어 주세요.</p>
         <label className="mt-4 block text-sm font-semibold">내 여행 사진<input type="file" accept="image/jpeg,image/png,image/webp" disabled={isUploadingImage} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, "local", file.name.replace(/\.[^.]+$/, "")); event.currentTarget.value = ""; }} className="mt-2 block w-full text-sm text-stone-700 file:mr-4 file:rounded-lg file:border-0 file:bg-teal-100 file:px-3 file:py-2 file:text-sm file:font-bold file:text-teal-800 hover:file:bg-teal-200" /></label>
         <p className="mt-2 text-xs text-stone-600">JPG, PNG, WebP · 한 장당 5MB 이하 · 초안 생성 시 사진 내용을 함께 살펴보고, 저장하면 본문 이미지로도 사용할 수 있습니다.</p>
-        {selectedImages.filter((image) => image.kind === "local").length > 0 && <p className="mt-2 rounded bg-white px-3 py-2 text-xs font-semibold text-teal-900">내 사진 {selectedImages.filter((image) => image.kind === "local").length}장이 초안 생성에 포함됩니다.</p>}
+        {personalImages.length > 0 && <div className="mt-3 rounded-lg border border-teal-200 bg-white p-3"><p className="text-xs font-bold text-teal-950">업로드 완료 · 내 사진 {personalImages.length}장</p><div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">{personalImages.map((image) => <div key={image.id} className="overflow-hidden rounded border border-teal-100"><img src={image.url} alt={image.alt} className="h-20 w-full object-cover" /></div>)}</div><p className="mt-2 text-xs text-teal-800">이 사진은 AI 초안 생성에 함께 전달되며, 저장·발행 시 본문 중간에도 자동 배치됩니다.</p></div>}
       </section>
       <section className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -404,6 +407,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         본문
         <textarea name="body" required maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="AI 초안 생성 시 자동으로 입력됩니다. 필요하면 직접 작성할 수도 있습니다." rows={10} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
+      {body.trim() && personalImages.length > 0 && <section className="rounded-lg border border-teal-200 bg-teal-50/40 p-4"><div><h2 className="text-sm font-semibold text-teal-950">내 사진이 포함된 본문 미리보기</h2><p className="mt-1 text-xs text-teal-800">초안 저장 및 발행 패키지 복사 시 아래와 같은 위치로 사진이 함께 들어갑니다. 위치는 아래 이미지 선택 목록에서 바꿀 수 있습니다.</p></div><div className="mt-4 space-y-4 rounded-lg bg-white p-4">{bodyPreviewSections.map((section, sectionIndex) => <div key={`${section.paragraph}-${sectionIndex}`} className="space-y-3"><p className="whitespace-pre-wrap text-sm leading-7 text-stone-800">{section.paragraph}</p>{section.images.filter((image) => image.kind === "local").map((image) => <img key={image.id} src={image.url} alt={image.alt} className="max-h-72 w-full rounded-lg object-cover" />)}</div>)}</div></section>}
       <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
         <div>
           <h2 className="text-sm font-semibold">글에 사용할 이미지</h2>
