@@ -58,6 +58,9 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [openaiModel, setOpenAIModel] = useState(textModels[0] ?? "");
   const [body, setBody] = useState("");
   const [imageQuery, setImageQuery] = useState("");
+  const [imageSearchQueries, setImageSearchQueries] = useState<string[]>([]);
+  const [imagePlacementIndexes, setImagePlacementIndexes] = useState<number[]>([]);
+  const [activeImagePlacement, setActiveImagePlacement] = useState<number | undefined>();
   const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<ContentImage[]>([]);
   const [imagePrompt, setImagePrompt] = useState("");
@@ -93,7 +96,24 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
 
       setTitle(result.title ?? "");
       setBody(result.body ?? "");
-      setGenerationMessage(`${result.model ?? "GPT"} 초안이 입력되었습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
+      const suggestedQueries = result.imageSearchQueries ?? [];
+      const suggestedQuery = suggestedQueries[0] ?? keyword.trim();
+      setImageSearchQueries(suggestedQueries);
+      const suggestedPlacements = result.imagePlacementIndexes ?? [];
+      setImagePlacementIndexes(suggestedPlacements);
+      setActiveImagePlacement(suggestedPlacements[0]);
+      setImageQuery(suggestedQuery);
+      setImagePrompt(result.imageGenerationPrompt ?? "");
+      if (suggestedQuery) {
+        const imageResult = await searchPexelsImages(suggestedQuery);
+        if (imageResult.error) {
+          setPexelsImages([]);
+          setImageError(imageResult.error);
+        } else {
+          setPexelsImages(imageResult.images);
+        }
+      }
+      setGenerationMessage(`${result.model ?? "GPT"} 초안과 본문 기반 이미지 추천을 준비했습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
     });
   }
 
@@ -177,7 +197,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         setImageError("글에는 이미지 8장까지 선택할 수 있습니다.");
         return current;
       }
-      return [...current, image];
+      return [...current, { ...image, placement: image.placement ?? activeImagePlacement }];
     });
   }
 
@@ -185,8 +205,13 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     setSelectedImages((current) => current.filter((image) => image.id !== imageId));
   }
 
-  function handleImageSearch() {
-    const query = imageQuery.trim() || keyword.trim();
+  function updateImagePlacement(imageId: string, placement: string) {
+    setSelectedImages((current) => current.map((image) => image.id === imageId ? { ...image, placement: placement === "auto" ? undefined : Number(placement) } : image));
+  }
+
+  const bodyParagraphs = body.trim().split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean);
+
+  function searchRecommendedImages(query: string) {
     setImageError("");
     if (!query) {
       setImageError("키워드 또는 이미지 검색어를 입력해 주세요.");
@@ -201,6 +226,10 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       }
       setPexelsImages(result.images);
     });
+  }
+
+  function handleImageSearch() {
+    searchRecommendedImages(imageQuery.trim() || keyword.trim());
   }
 
   async function uploadImage(file: File, kind: "local" | "generated", alt: string) {
@@ -252,13 +281,17 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     <form action={formAction} className="max-w-2xl space-y-6 rounded-xl border border-stone-200 bg-white p-6">
       <input type="hidden" name="images" value={JSON.stringify(selectedImages)} />
       <label className="block text-sm font-semibold">
-        제목
-        <input name="title" required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="예: 아이와 함께 떠나는 여름 여행" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
-      </label>
-      <label className="block text-sm font-semibold">
         키워드
         <input name="keyword" required maxLength={100} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="예: 여름 가족여행" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
+      <label className="block text-sm font-semibold">
+        작성 목적
+        <textarea name="purpose" required maxLength={1000} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="이 글을 읽은 사람이 무엇을 알거나 결정하면 좋은지 입력하세요." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-sm font-semibold">대상 독자 <span className="font-normal text-stone-500">(선택)</span><input value={readerProfile} onChange={(event) => setReaderProfile(event.target.value)} maxLength={500} placeholder="예: 처음 나트랑에 가는 아이 동반 가족" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
+        <label className="block text-sm font-semibold">기획 조건 <span className="font-normal text-stone-500">(선택)</span><input value={contentAngle} onChange={(event) => setContentAngle(event.target.value)} maxLength={1000} placeholder="예: 1인 2만원대, 시내 중심, 이동 동선 고려" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
+      </div>
       <section className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="text-sm font-semibold">자동 리서치</h2><p className="mt-1 text-xs text-stone-600">맛집·여행 같은 가이드형 키워드는 블로그 후기를, 최신 이슈는 뉴스를 우선 검색합니다.</p></div>
@@ -281,18 +314,10 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
           </label>
           <button type="button" onClick={handlePlaceSearch} disabled={isSearchingPlaces} className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingPlaces ? "장소 검색 중…" : "실제 장소 검색"}</button>
         </div>
-        <p className="mt-2 text-xs text-stone-600">자동·직접 검색 결과의 주소를 모두 확인한 뒤, 글에 넣을 장소를 여러 개 선택하세요. AI는 선택한 장소명·주소·지도 링크만 사용할 수 있습니다.</p>
+        <p className="mt-2 text-xs text-stone-600">자동·직접 검색 결과의 주소를 모두 확인한 뒤, 글에 넣을 장소를 여러 개 선택하세요. AI는 선택한 장소명과 주소만 사용합니다.</p>
         {placeError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{placeError}</p>}
         {placeResults.length > 0 && <div className="mt-3 space-y-2"><p className="text-sm font-semibold text-amber-950">확인된 장소 {placeResults.length}곳 · 선택 {selectedPlaceIds.length}곳</p>{placeResults.map((place) => <label key={place.id} className="flex cursor-pointer gap-3 rounded-lg border border-amber-100 bg-white p-3"><input type="checkbox" checked={selectedPlaceIds.includes(place.id)} onChange={() => togglePlaceSelection(place.id)} className="mt-1" /><span><span className="mr-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900">{place.source === "automatic" ? "참고자료 자동 확인" : "직접 검색"}</span><strong>{place.name}</strong><p className="mt-1 text-sm text-stone-600">{place.formattedAddress}</p><a href={place.mapsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="mt-1 inline-block text-sm font-semibold text-amber-800 hover:underline">지도에서 확인</a></span></label>)}</div>}
       </section>
-      <label className="block text-sm font-semibold">
-        작성 목적
-        <textarea name="purpose" required maxLength={1000} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="이 글로 전달하고 싶은 내용을 입력하세요." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
-      </label>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm font-semibold">대상 독자 <span className="font-normal text-stone-500">(선택)</span><input value={readerProfile} onChange={(event) => setReaderProfile(event.target.value)} maxLength={500} placeholder="예: 처음 나트랑에 가는 아이 동반 가족" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
-        <label className="block text-sm font-semibold">기획 조건 <span className="font-normal text-stone-500">(선택)</span><input value={contentAngle} onChange={(event) => setContentAngle(event.target.value)} maxLength={1000} placeholder="예: 1인 2만원대, 시내 중심, 이동 동선 고려" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
-      </div>
       <fieldset>
         <legend className="text-sm font-semibold">글 길이</legend>
         <div className="mt-2 flex flex-wrap gap-4 text-sm">
@@ -331,11 +356,27 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         </label>
         <p className="mt-2 text-xs text-stone-600">글 초안은 GPT만 사용합니다. 모델 목록은 서버 전용 환경변수로 관리됩니다.</p>
       </section>
+      <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <p className="text-sm font-semibold text-emerald-950">입력한 조건으로 AI 초안 작성</p>
+        <p className="mt-1 text-xs leading-5 text-emerald-900">참고자료와 선택 장소, 글 길이·말투·작성 가이드를 종합해 제목과 본문을 자동으로 입력합니다.</p>
+        <button type="button" onClick={handleAIGeneration} disabled={isGenerating} className="mt-3 rounded-lg border border-emerald-700 bg-white px-5 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60">{isGenerating ? "AI 초안 생성 중…" : "AI 초안 생성"}</button>
+        {generationError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{generationError}</p>}
+        {generationMessage && <p role="status" className="mt-3 rounded-lg bg-white p-3 text-sm text-emerald-800">{generationMessage}</p>}
+      </section>
+      <label className="block text-sm font-semibold">
+        제목 <span className="font-normal text-stone-500">(자동 입력)</span>
+        <input name="title" required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="AI 초안 생성 시 자동으로 입력됩니다. 필요하면 직접 수정하세요." className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+      </label>
+      <label className="block text-sm font-semibold">
+        본문
+        <textarea name="body" required maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="AI 초안 생성 시 자동으로 입력됩니다. 필요하면 직접 작성할 수도 있습니다." rows={10} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+      </label>
       <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
         <div>
           <h2 className="text-sm font-semibold">글에 사용할 이미지</h2>
-          <p className="mt-1 text-xs text-stone-600">Pexels 추천 이미지는 출처를 함께 기록합니다. 직접 올린 이미지와 AI 생성 이미지는 내 전용 보관함에 저장됩니다.</p>
+          <p className="mt-1 text-xs text-stone-600">AI 초안을 만들면 본문 맥락에 맞는 Pexels 이미지가 자동 추천됩니다. 직접 올린 이미지와 AI 생성 이미지는 내 전용 보관함에 저장됩니다.</p>
         </div>
+        {imageSearchQueries.length > 0 && <div className="mt-4 rounded-lg border border-rose-200 bg-white p-3"><p className="text-sm font-semibold text-rose-950">AI 추천 이미지 검색어</p><p className="mt-1 text-xs text-stone-600">검색어를 누르면 해당 본문 문단 뒤에 자동 배치될 위치도 함께 선택됩니다. 이미지를 고른 뒤에는 아래에서 위치를 바꿀 수 있습니다.</p><div className="mt-2 flex flex-wrap gap-2">{imageSearchQueries.map((query, index) => <button key={query} type="button" onClick={() => { setImageQuery(query); setActiveImagePlacement(imagePlacementIndexes[index]); searchRecommendedImages(query); }} disabled={isSearchingImages} className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-60">{query}</button>)}</div></div>}
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="min-w-0 flex-1 text-sm font-semibold">
             이미지 검색어 <span className="font-normal text-stone-500">(비워 두면 키워드 사용)</span>
@@ -348,7 +389,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
             const selected = selectedImages.some((selectedImage) => selectedImage.id === image.id);
             return <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white">
               <img src={image.url} alt={image.alt} className="h-36 w-full object-cover" />
-              <div className="p-3"><p className="line-clamp-2 text-xs text-stone-600">{image.alt}</p><a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a><button type="button" onClick={() => selected ? removeImage(image.id) : addImage({ ...image, kind: "pexels" })} className="mt-3 rounded border border-rose-700 px-3 py-1.5 text-xs font-bold text-rose-800 hover:bg-rose-50">{selected ? "선택 해제" : "이 이미지 선택"}</button></div>
+              <div className="p-3"><p className="line-clamp-2 text-xs text-stone-600">{image.alt}</p><a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a><button type="button" onClick={() => selected ? removeImage(image.id) : addImage({ ...image, kind: "pexels", placement: activeImagePlacement })} className="mt-3 rounded border border-rose-700 px-3 py-1.5 text-xs font-bold text-rose-800 hover:bg-rose-50">{selected ? "선택 해제" : "이 이미지 선택"}</button></div>
             </article>;
           })}
         </div>}
@@ -358,6 +399,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
             AI 이미지 생성 설명
             <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} maxLength={1000} placeholder="예: 밝은 아침 햇살의 나트랑 해변 카페 외관, 여행 매거진 사진 스타일, 글자 없음" rows={3} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
           </label>
+          <p className="mt-2 text-xs text-stone-600">AI 초안을 만들면 본문에 맞는 생성 설명이 자동 추천됩니다. 내용을 확인·수정한 뒤 생성하세요.</p>
           <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : "GPT 이미지 2로 생성"}</button>
         </div>
         <div className="mt-5 border-t border-rose-100 pt-4">
@@ -368,17 +410,10 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
           <p className="mt-2 text-xs text-stone-600">JPG, PNG, WebP · 한 장당 5MB 이하</p>
         </div>
         {imageError && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{imageError}</p>}
-        {selectedImages.length > 0 && <div className="mt-5 border-t border-rose-100 pt-4"><p className="text-sm font-semibold text-rose-950">선택한 이미지 {selectedImages.length}/8</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{selectedImages.map((image) => <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white"><img src={image.url} alt={image.alt} className="h-36 w-full object-cover" /><div className="p-3"><p className="text-xs text-stone-600">{image.kind === "pexels" ? "Pexels 추천" : image.kind === "generated" ? "AI 생성" : "내 이미지"}</p><p className="mt-1 line-clamp-2 text-xs text-stone-600">{image.alt}</p>{image.attribution && image.attributionUrl && <a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a>}<button type="button" onClick={() => removeImage(image.id)} className="mt-3 text-xs font-bold text-red-700 hover:underline">제거</button></div></article>)}</div></div>}
+        {selectedImages.length > 0 && <div className="mt-5 border-t border-rose-100 pt-4"><p className="text-sm font-semibold text-rose-950">선택한 이미지 {selectedImages.length}/8</p><p className="mt-1 text-xs text-stone-600">본문 문단을 만든 뒤 원하는 이미지 위치를 바꿀 수 있습니다. ‘자동 배치’는 이미지 순서와 본문 길이에 맞춰 고르게 넣습니다.</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{selectedImages.map((image) => <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white"><img src={image.url} alt={image.alt} className="h-36 w-full object-cover" /><div className="p-3"><p className="text-xs text-stone-600">{image.kind === "pexels" ? "Pexels 추천" : image.kind === "generated" ? "AI 생성" : "내 이미지"}</p><p className="mt-1 line-clamp-2 text-xs text-stone-600">{image.alt}</p>{image.attribution && image.attributionUrl && <a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a>}<label className="mt-3 block text-xs font-semibold text-stone-700">본문 위치<select value={image.placement === undefined ? "auto" : String(image.placement)} onChange={(event) => updateImagePlacement(image.id, event.target.value)} className="mt-1 w-full rounded border border-stone-300 bg-white px-2 py-1.5 text-xs"><option value="auto">자동 배치</option>{bodyParagraphs.map((paragraph, index) => <option key={`${index}-${paragraph.slice(0, 20)}`} value={String(index)}>본문 {index + 1}문단 뒤</option>)}</select></label><button type="button" onClick={() => removeImage(image.id)} className="mt-3 text-xs font-bold text-red-700 hover:underline">제거</button></div></article>)}</div></div>}
       </section>
-      <label className="block text-sm font-semibold">
-        본문
-        <textarea name="body" required maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="직접 작성한 초안 본문을 입력하세요." rows={10} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
-      </label>
       {state.error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
-      {generationError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{generationError}</p>}
-      {generationMessage && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{generationMessage}</p>}
       <div className="flex flex-wrap items-center gap-4">
-        <button type="button" onClick={handleAIGeneration} disabled={isGenerating} className="rounded-lg border border-emerald-700 px-5 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60">{isGenerating ? "AI 초안 생성 중…" : "AI 초안 생성"}</button>
         <SubmitButton />
         <p className="text-xs text-stone-500">AI 생성 결과는 저장되지 않으며, 내용을 검토한 뒤 초안 저장을 눌러야 합니다.</p>
       </div>
