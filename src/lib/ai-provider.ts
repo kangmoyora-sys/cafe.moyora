@@ -16,7 +16,7 @@ export function isOpenAITextModelConfigured(model: string) {
   return process.env.AI_GENERATION_ENABLED === "true" && Boolean(process.env.OPENAI_API_KEY) && getOpenAITextModels().includes(model);
 }
 
-export async function generateStructuredText(model: string, systemInstruction: string, userPrompt: string) {
+export async function generateStructuredText(model: string, systemInstruction: string, userPrompt: string, imageUrls: string[] = []) {
   if (!isOpenAITextModelConfigured(model)) throw new Error("선택한 GPT 모델은 아직 설정되지 않았습니다.");
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -43,7 +43,18 @@ export async function generateStructuredText(model: string, systemInstruction: s
           },
         },
       },
-      messages: [{ role: "system", content: systemInstruction }, { role: "user", content: userPrompt }],
+      messages: [
+        { role: "system", content: systemInstruction },
+        {
+          role: "user",
+          content: imageUrls.length > 0
+            ? [
+                { type: "text", text: userPrompt },
+                ...imageUrls.map((url) => ({ type: "image_url", image_url: { url, detail: "low" } })),
+              ]
+            : userPrompt,
+        },
+      ],
     }),
   });
   if (!response.ok) throw new Error("GPT 초안 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.");

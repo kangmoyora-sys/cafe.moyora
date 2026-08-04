@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
 import type { ContentImage } from "@/lib/content-images";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { findPlacesFromReferences, generateAIDraft, generateContentImage, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
+import { findPlacesFromReferences, generateAIDraft, generateContentImage, importGoogleMapsLinks, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -42,6 +42,8 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [isSearchingPlaces, startSearchingPlaces] = useTransition();
   const [isFindingReferencePlaces, startFindingReferencePlaces] = useTransition();
   const [placeQuery, setPlaceQuery] = useState("");
+  const [googleMapsLinks, setGoogleMapsLinks] = useState("");
+  const [isImportingMaps, startImportingMaps] = useTransition();
   const [placeError, setPlaceError] = useState("");
   const [placeResults, setPlaceResults] = useState<GooglePlace[]>([]);
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
@@ -51,6 +53,8 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [purpose, setPurpose] = useState("");
   const [readerProfile, setReaderProfile] = useState("");
   const [contentAngle, setContentAngle] = useState("");
+  const [personalNotes, setPersonalNotes] = useState("");
+  const [externalReferenceUrls, setExternalReferenceUrls] = useState("");
   const [length, setLength] = useState("short");
   const [tone, setTone] = useState("friendly_informative");
   const [writingGuideId, setWritingGuideId] = useState("");
@@ -85,6 +89,9 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     formData.set("writingGuideNotes", writingGuideNotes);
     formData.set("newsReferences", JSON.stringify(newsItems.filter((item) => selectedNewsUrls.includes(item.sourceUrl))));
     formData.set("googlePlaceIds", JSON.stringify(selectedPlaceIds));
+    formData.set("personalNotes", personalNotes);
+    formData.set("externalReferenceUrls", externalReferenceUrls);
+    formData.set("attachedImages", JSON.stringify(selectedImages));
     formData.set("openaiModel", openaiModel);
 
     startGenerating(async () => {
@@ -169,6 +176,19 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         return;
       }
       setPlaceResults((current) => mergePlaces(current, result.places));
+    });
+  }
+
+  function handleGoogleMapsImport() {
+    setPlaceError("");
+    startImportingMaps(async () => {
+      const result = await importGoogleMapsLinks(googleMapsLinks);
+      if (result.error) {
+        setPlaceError(result.error);
+        return;
+      }
+      setPlaceResults((current) => mergePlaces(current, result.places));
+      setSelectedPlaceIds((current) => [...new Set([...current, ...result.places.map((place) => place.id)])]);
     });
   }
 
@@ -292,6 +312,15 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         <label className="block text-sm font-semibold">대상 독자 <span className="font-normal text-stone-500">(선택)</span><input value={readerProfile} onChange={(event) => setReaderProfile(event.target.value)} maxLength={500} placeholder="예: 처음 나트랑에 가는 아이 동반 가족" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
         <label className="block text-sm font-semibold">기획 조건 <span className="font-normal text-stone-500">(선택)</span><input value={contentAngle} onChange={(event) => setContentAngle(event.target.value)} maxLength={1000} placeholder="예: 1인 2만원대, 시내 중심, 이동 동선 고려" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
       </div>
+      <section className="rounded-lg border border-teal-100 bg-teal-50/50 p-4">
+        <div><h2 className="text-sm font-semibold">내 자료 첨부 <span className="font-normal text-stone-500">(선택)</span></h2><p className="mt-1 text-xs leading-5 text-stone-600">직접 다녀온 경험, 사진, 장소 링크, 다른 블로그·뉴스 링크를 함께 주면 AI가 자동 검색 자료보다 우선해 글의 근거로 사용합니다.</p></div>
+        <label className="mt-4 block text-sm font-semibold">내 여행 메모<textarea name="personalNotes" value={personalNotes} onChange={(event) => setPersonalNotes(event.target.value)} maxLength={4000} placeholder="예: 아이와 오전 10시에 방문했고, 대기 없이 들어갔어요. 바다 쪽 좌석이 좋았지만 햇빛이 강했습니다." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" /></label>
+        <label className="mt-4 block text-sm font-semibold">다른 블로그·뉴스 참고 링크<textarea name="externalReferenceUrls" value={externalReferenceUrls} onChange={(event) => setExternalReferenceUrls(event.target.value)} maxLength={6000} placeholder="링크를 줄바꿈으로 최대 5개까지 입력하세요. 예: https://blog.naver.com/..." rows={3} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" /></label>
+        <p className="mt-2 text-xs text-stone-600">공개 웹페이지의 제목·요약을 읽어 참고합니다. 로그인해야 보이는 글이나 짧은 링크는 메모에 핵심 내용을 함께 적어 주세요.</p>
+        <label className="mt-4 block text-sm font-semibold">내 여행 사진<input type="file" accept="image/jpeg,image/png,image/webp" disabled={isUploadingImage} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, "local", file.name.replace(/\.[^.]+$/, "")); event.currentTarget.value = ""; }} className="mt-2 block w-full text-sm text-stone-700 file:mr-4 file:rounded-lg file:border-0 file:bg-teal-100 file:px-3 file:py-2 file:text-sm file:font-bold file:text-teal-800 hover:file:bg-teal-200" /></label>
+        <p className="mt-2 text-xs text-stone-600">JPG, PNG, WebP · 한 장당 5MB 이하 · 초안 생성 시 사진 내용을 함께 살펴보고, 저장하면 본문 이미지로도 사용할 수 있습니다.</p>
+        {selectedImages.filter((image) => image.kind === "local").length > 0 && <p className="mt-2 rounded bg-white px-3 py-2 text-xs font-semibold text-teal-900">내 사진 {selectedImages.filter((image) => image.kind === "local").length}장이 초안 생성에 포함됩니다.</p>}
+      </section>
       <section className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="text-sm font-semibold">자동 리서치</h2><p className="mt-1 text-xs text-stone-600">맛집·여행 같은 가이드형 키워드는 블로그 후기를, 최신 이슈는 뉴스를 우선 검색합니다.</p></div>
@@ -313,6 +342,10 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
             <input value={placeQuery} onChange={(event) => setPlaceQuery(event.target.value)} maxLength={150} placeholder="예: 깜란 엠어이 베트남" className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
           </label>
           <button type="button" onClick={handlePlaceSearch} disabled={isSearchingPlaces} className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">{isSearchingPlaces ? "장소 검색 중…" : "실제 장소 검색"}</button>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-amber-100 pt-4">
+          <label className="min-w-0 flex-1 text-sm font-semibold">Google Maps 링크 가져오기 <span className="font-normal text-stone-500">(선택)</span><textarea value={googleMapsLinks} onChange={(event) => setGoogleMapsLinks(event.target.value)} maxLength={6000} placeholder="장소명 또는 place_id가 포함된 Google Maps 링크를 줄바꿈으로 붙여넣으세요." rows={2} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" /></label>
+          <button type="button" onClick={handleGoogleMapsImport} disabled={isImportingMaps} className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">{isImportingMaps ? "가져오는 중…" : "링크에서 장소 추가"}</button>
         </div>
         <p className="mt-2 text-xs text-stone-600">자동·직접 검색 결과의 주소를 모두 확인한 뒤, 글에 넣을 장소를 여러 개 선택하세요. AI는 선택한 장소명과 주소만 사용합니다.</p>
         {placeError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{placeError}</p>}
