@@ -8,6 +8,8 @@ export type ContentImage = {
   alt: string;
   attribution?: string;
   attributionUrl?: string;
+  /** Zero-based paragraph index after which this image is inserted. */
+  placement?: number;
 };
 
 export function isContentImage(value: unknown): value is ContentImage {
@@ -17,6 +19,7 @@ export function isContentImage(value: unknown): value is ContentImage {
   if (candidate.id.length > 100 || candidate.alt.length > 300) return false;
   if (candidate.attribution !== undefined && (typeof candidate.attribution !== "string" || candidate.attribution.length > 300)) return false;
   if (candidate.attributionUrl !== undefined && (typeof candidate.attributionUrl !== "string" || candidate.attributionUrl.length > 1000)) return false;
+  if (candidate.placement !== undefined && (!Number.isInteger(candidate.placement) || candidate.placement < 0 || candidate.placement > 100)) return false;
   try {
     const url = new URL(candidate.url);
     if (url.protocol !== "https:") return false;

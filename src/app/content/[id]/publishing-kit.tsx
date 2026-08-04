@@ -20,10 +20,8 @@ function makePublishingSections(body: string, images: ContentImage[]) {
   const sections: PublishingSection[] = (paragraphs.length > 0 ? paragraphs : [body.trim()]).map((paragraph) => ({ paragraph, images: [] }));
 
   images.forEach((image, imageIndex) => {
-    const sectionIndex = Math.min(
-      sections.length - 1,
-      Math.max(0, Math.floor(((imageIndex + 1) * sections.length) / (images.length + 1))),
-    );
+    const automaticIndex = Math.floor(((imageIndex + 1) * sections.length) / (images.length + 1));
+    const sectionIndex = Math.min(sections.length - 1, Math.max(0, Number.isInteger(image.placement) ? image.placement as number : automaticIndex));
     sections[sectionIndex].images.push(image);
   });
 

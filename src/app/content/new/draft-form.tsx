@@ -59,6 +59,8 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [body, setBody] = useState("");
   const [imageQuery, setImageQuery] = useState("");
   const [imageSearchQueries, setImageSearchQueries] = useState<string[]>([]);
+  const [imagePlacementIndexes, setImagePlacementIndexes] = useState<number[]>([]);
+  const [activeImagePlacement, setActiveImagePlacement] = useState<number | undefined>();
   const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<ContentImage[]>([]);
   const [imagePrompt, setImagePrompt] = useState("");
@@ -97,6 +99,9 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       const suggestedQueries = result.imageSearchQueries ?? [];
       const suggestedQuery = suggestedQueries[0] ?? keyword.trim();
       setImageSearchQueries(suggestedQueries);
+      const suggestedPlacements = result.imagePlacementIndexes ?? [];
+      setImagePlacementIndexes(suggestedPlacements);
+      setActiveImagePlacement(suggestedPlacements[0]);
       setImageQuery(suggestedQuery);
       setImagePrompt(result.imageGenerationPrompt ?? "");
       if (suggestedQuery) {
@@ -192,13 +197,19 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         setImageError("글에는 이미지 8장까지 선택할 수 있습니다.");
         return current;
       }
-      return [...current, image];
+      return [...current, { ...image, placement: image.placement ?? activeImagePlacement }];
     });
   }
 
   function removeImage(imageId: string) {
     setSelectedImages((current) => current.filter((image) => image.id !== imageId));
   }
+
+  function updateImagePlacement(imageId: string, placement: string) {
+    setSelectedImages((current) => current.map((image) => image.id === imageId ? { ...image, placement: placement === "auto" ? undefined : Number(placement) } : image));
+  }
+
+  const bodyParagraphs = body.trim().split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean);
 
   function searchRecommendedImages(query: string) {
     setImageError("");
@@ -354,7 +365,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
           <h2 className="text-sm font-semibold">글에 사용할 이미지</h2>
           <p className="mt-1 text-xs text-stone-600">AI 초안을 만들면 본문 맥락에 맞는 Pexels 이미지가 자동 추천됩니다. 직접 올린 이미지와 AI 생성 이미지는 내 전용 보관함에 저장됩니다.</p>
         </div>
-        {imageSearchQueries.length > 0 && <div className="mt-4 rounded-lg border border-rose-200 bg-white p-3"><p className="text-sm font-semibold text-rose-950">AI 추천 이미지 검색어</p><div className="mt-2 flex flex-wrap gap-2">{imageSearchQueries.map((query) => <button key={query} type="button" onClick={() => { setImageQuery(query); searchRecommendedImages(query); }} disabled={isSearchingImages} className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-60">{query}</button>)}</div></div>}
+        {imageSearchQueries.length > 0 && <div className="mt-4 rounded-lg border border-rose-200 bg-white p-3"><p className="text-sm font-semibold text-rose-950">AI 추천 이미지 검색어</p><p className="mt-1 text-xs text-stone-600">검색어를 누르면 해당 본문 문단 뒤에 자동 배치될 위치도 함께 선택됩니다. 이미지를 고른 뒤에는 아래에서 위치를 바꿀 수 있습니다.</p><div className="mt-2 flex flex-wrap gap-2">{imageSearchQueries.map((query, index) => <button key={query} type="button" onClick={() => { setImageQuery(query); setActiveImagePlacement(imagePlacementIndexes[index]); searchRecommendedImages(query); }} disabled={isSearchingImages} className="rounded-full border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-60">{query}</button>)}</div></div>}
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="min-w-0 flex-1 text-sm font-semibold">
             이미지 검색어 <span className="font-normal text-stone-500">(비워 두면 키워드 사용)</span>
@@ -367,7 +378,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
             const selected = selectedImages.some((selectedImage) => selectedImage.id === image.id);
             return <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white">
               <img src={image.url} alt={image.alt} className="h-36 w-full object-cover" />
-              <div className="p-3"><p className="line-clamp-2 text-xs text-stone-600">{image.alt}</p><a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a><button type="button" onClick={() => selected ? removeImage(image.id) : addImage({ ...image, kind: "pexels" })} className="mt-3 rounded border border-rose-700 px-3 py-1.5 text-xs font-bold text-rose-800 hover:bg-rose-50">{selected ? "선택 해제" : "이 이미지 선택"}</button></div>
+              <div className="p-3"><p className="line-clamp-2 text-xs text-stone-600">{image.alt}</p><a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a><button type="button" onClick={() => selected ? removeImage(image.id) : addImage({ ...image, kind: "pexels", placement: activeImagePlacement })} className="mt-3 rounded border border-rose-700 px-3 py-1.5 text-xs font-bold text-rose-800 hover:bg-rose-50">{selected ? "선택 해제" : "이 이미지 선택"}</button></div>
             </article>;
           })}
         </div>}
@@ -388,7 +399,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
           <p className="mt-2 text-xs text-stone-600">JPG, PNG, WebP · 한 장당 5MB 이하</p>
         </div>
         {imageError && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{imageError}</p>}
-        {selectedImages.length > 0 && <div className="mt-5 border-t border-rose-100 pt-4"><p className="text-sm font-semibold text-rose-950">선택한 이미지 {selectedImages.length}/8</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{selectedImages.map((image) => <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white"><img src={image.url} alt={image.alt} className="h-36 w-full object-cover" /><div className="p-3"><p className="text-xs text-stone-600">{image.kind === "pexels" ? "Pexels 추천" : image.kind === "generated" ? "AI 생성" : "내 이미지"}</p><p className="mt-1 line-clamp-2 text-xs text-stone-600">{image.alt}</p>{image.attribution && image.attributionUrl && <a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a>}<button type="button" onClick={() => removeImage(image.id)} className="mt-3 text-xs font-bold text-red-700 hover:underline">제거</button></div></article>)}</div></div>}
+        {selectedImages.length > 0 && <div className="mt-5 border-t border-rose-100 pt-4"><p className="text-sm font-semibold text-rose-950">선택한 이미지 {selectedImages.length}/8</p><p className="mt-1 text-xs text-stone-600">본문 문단을 만든 뒤 원하는 이미지 위치를 바꿀 수 있습니다. ‘자동 배치’는 이미지 순서와 본문 길이에 맞춰 고르게 넣습니다.</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{selectedImages.map((image) => <article key={image.id} className="overflow-hidden rounded-lg border border-rose-100 bg-white"><img src={image.url} alt={image.alt} className="h-36 w-full object-cover" /><div className="p-3"><p className="text-xs text-stone-600">{image.kind === "pexels" ? "Pexels 추천" : image.kind === "generated" ? "AI 생성" : "내 이미지"}</p><p className="mt-1 line-clamp-2 text-xs text-stone-600">{image.alt}</p>{image.attribution && image.attributionUrl && <a href={image.attributionUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-rose-800 hover:underline">{image.attribution}</a>}<label className="mt-3 block text-xs font-semibold text-stone-700">본문 위치<select value={image.placement === undefined ? "auto" : String(image.placement)} onChange={(event) => updateImagePlacement(image.id, event.target.value)} className="mt-1 w-full rounded border border-stone-300 bg-white px-2 py-1.5 text-xs"><option value="auto">자동 배치</option>{bodyParagraphs.map((paragraph, index) => <option key={`${index}-${paragraph.slice(0, 20)}`} value={String(index)}>본문 {index + 1}문단 뒤</option>)}</select></label><button type="button" onClick={() => removeImage(image.id)} className="mt-3 text-xs font-bold text-red-700 hover:underline">제거</button></div></article>)}</div></div>}
       </section>
       <label className="block text-sm font-semibold">
         본문
