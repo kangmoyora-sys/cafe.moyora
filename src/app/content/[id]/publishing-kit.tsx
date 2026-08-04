@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ContentImage } from "@/lib/content-images";
+import { makeContentSections } from "@/lib/content-image-placement";
 
 type Destination = "cafe" | "blog";
 
@@ -10,30 +11,12 @@ const destinationLabels: Record<Destination, string> = {
   blog: "네이버 블로그",
 };
 
-type PublishingSection = {
-  paragraph: string;
-  images: ContentImage[];
-};
-
-function makePublishingSections(body: string, images: ContentImage[]) {
-  const paragraphs = body.trim().split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean);
-  const sections: PublishingSection[] = (paragraphs.length > 0 ? paragraphs : [body.trim()]).map((paragraph) => ({ paragraph, images: [] }));
-
-  images.forEach((image, imageIndex) => {
-    const automaticIndex = Math.floor(((imageIndex + 1) * sections.length) / (images.length + 1));
-    const sectionIndex = Math.min(sections.length - 1, Math.max(0, Number.isInteger(image.placement) ? image.placement as number : automaticIndex));
-    sections[sectionIndex].images.push(image);
-  });
-
-  return sections;
-}
-
 function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 function createPublishingPackage({ title, body, images }: { title: string; body: string; images: ContentImage[] }) {
-  const sections = makePublishingSections(body, images);
+  const sections = makeContentSections(body, images);
   let imageNumber = 0;
 
   return `${title}\n\n${sections.map((section) => {
@@ -47,7 +30,7 @@ function createPublishingPackage({ title, body, images }: { title: string; body:
 }
 
 function createPublishingHtml({ title, body, images }: { title: string; body: string; images: ContentImage[] }) {
-  const sections = makePublishingSections(body, images);
+  const sections = makeContentSections(body, images);
   let imageNumber = 0;
 
   const content = sections.map((section) => {
@@ -65,7 +48,7 @@ function createPublishingHtml({ title, body, images }: { title: string; body: st
 export function PublishingKit({ title, body, images }: { title: string; body: string; images: ContentImage[] }) {
   const [destination, setDestination] = useState<Destination>("cafe");
   const [message, setMessage] = useState("");
-  const sections = makePublishingSections(body, images);
+  const sections = makeContentSections(body, images);
 
   async function copyPackage() {
     const content = createPublishingPackage({ title, body, images });
