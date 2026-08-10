@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ContentGuide } from "@/lib/content-guides";
 import type { ContentImage } from "@/lib/content-images";
@@ -9,6 +9,7 @@ import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/clie
 import { findPlacesFromReferences, generateAIDraft, generateContentImage, importGoogleMapsLinks, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type ParagraphImageGenerationPrompt, type ParagraphImageQuery, type PexelsImage } from "./actions";
 
 const initialState: DraftFormState = {};
+const maximumConcurrentImageGenerations = 3;
 
 function mergePlaces(current: GooglePlace[], incoming: GooglePlace[]) {
   return [...new Map([...current, ...incoming].map((place) => [place.id, place])).values()];
@@ -74,7 +75,8 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageError, setImageError] = useState("");
   const [isSearchingImages, startSearchingImages] = useTransition();
-  const [isGeneratingImage, startGeneratingImage] = useTransition();
+  const [activeImageGenerationCount, setActiveImageGenerationCount] = useState(0);
+  const activeImageGenerationCountRef = useRef(0);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   function handleAIGeneration() {
@@ -314,31 +316,19 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     }
   }
 
-  function handleImageGeneration() {
-    setImageError("");
-    startGeneratingImage(async () => {
-      const result = await generateContentImage(imagePrompt);
-      if (result.error || !result.image) {
-        setImageError(result.error ?? "AI 생성 이미지를 처리하지 못했습니다.");
-        return;
-      }
-      const response = await fetch(result.image.dataUrl);
-      const blob = await response.blob();
-      await uploadImage(new File([blob], "generated-image.png", { type: "image/png" }), "generated", result.image.alt);
-    });
-  }
-
-  function updateParagraphImageGenerationPrompt(paragraphIndex: number, prompt: string) {
-    setParagraphImageGenerationPrompts((current) => current.map((item) => item.paragraphIndex === paragraphIndex ? { ...item, prompt } : item));
-  }
-
-  function generateParagraphImage(prompt: string, paragraphIndex: number) {
+  async function generateImageForPlacement(prompt: string, placement?: number) {
     setImageError("");
     if (!prompt.trim()) {
       setImageError("이미지 생성 설명을 입력해 주세요.");
       return;
     }
-    startGeneratingImage(async () => {
+    if (activeImageGenerationCountRef.current >= maximumConcurrentImageGenerations) {
+      setImageError("이미지 생성은 한 번에 3장까지 요청할 수 있습니다. 진행 중인 생성이 끝나면 다시 눌러 주세요.");
+      return;
+    }
+    activeImageGenerationCountRef.current += 1;
+    setActiveImageGenerationCount(activeImageGenerationCountRef.current);
+    try {
       const result = await generateContentImage(prompt);
       if (result.error || !result.image) {
         setImageError(result.error ?? "AI 생성 이미지를 처리하지 못했습니다.");
@@ -346,8 +336,25 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       }
       const response = await fetch(result.image.dataUrl);
       const blob = await response.blob();
-      await uploadImage(new File([blob], "generated-image.png", { type: "image/png" }), "generated", result.image.alt, paragraphIndex);
-    });
+      await uploadImage(new File([blob], "generated-image.png", { type: "image/png" }), "generated", result.image.alt, placement);
+    } catch {
+      setImageError("AI 생성 이미지를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      activeImageGenerationCountRef.current = Math.max(0, activeImageGenerationCountRef.current - 1);
+      setActiveImageGenerationCount(activeImageGenerationCountRef.current);
+    }
+  }
+
+  function handleImageGeneration() {
+    void generateImageForPlacement(imagePrompt, activeImagePlacement);
+  }
+
+  function updateParagraphImageGenerationPrompt(paragraphIndex: number, prompt: string) {
+    setParagraphImageGenerationPrompts((current) => current.map((item) => item.paragraphIndex === paragraphIndex ? { ...item, prompt } : item));
+  }
+
+  function generateParagraphImage(prompt: string, paragraphIndex: number) {
+    void generateImageForPlacement(prompt, paragraphIndex);
   }
 
   return (
@@ -458,7 +465,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         <textarea name="body" required maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="AI 초안 생성 시 자동으로 입력됩니다. 필요하면 직접 작성할 수도 있습니다." rows={10} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
       {bodyParagraphs.length > 0 && paragraphImageQueries.length > 0 && <section className="rounded-lg border border-rose-200 bg-rose-50/40 p-4"><h2 className="text-sm font-semibold text-rose-950">문단별 이미지 추천</h2><p className="mt-1 text-xs text-stone-600">각 문단에 어울리는 추천 이미지를 선택하면 해당 문단 바로 뒤에 삽입됩니다.</p><div className="mt-4 space-y-5">{bodyParagraphs.map((paragraph, paragraphIndex) => { const suggestion = paragraphImageQueries.find((item) => item.paragraphIndex === paragraphIndex); const images = paragraphPexelsImages[paragraphIndex] ?? []; if (!suggestion) return null; return <div key={`${paragraphIndex}-${suggestion.query}`} className="rounded-lg border border-rose-100 bg-white p-3"><p className="text-xs font-semibold text-stone-500">본문 {paragraphIndex + 1}문단</p><p className="mt-1 line-clamp-2 text-sm text-stone-700">{paragraph}</p><div className="mt-3 flex flex-wrap items-center gap-2"><span className="rounded-full bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-800">{suggestion.query}</span><button type="button" onClick={() => searchParagraphImages(paragraphIndex, suggestion.query)} disabled={isSearchingImages} className="text-xs font-bold text-rose-800 hover:underline">다시 검색</button></div>{images.length > 0 ? <div className="mt-3 grid gap-3 sm:grid-cols-3">{images.map((image) => <article key={image.id} className="overflow-hidden rounded border border-rose-100"><img src={image.url} alt={image.alt} className="h-28 w-full object-cover" /><button type="button" onClick={() => selectParagraphImage(image, paragraphIndex)} className="w-full px-2 py-2 text-xs font-bold text-rose-800 hover:bg-rose-50">이 문단에 삽입</button></article>)}</div> : <p className="mt-3 text-xs text-stone-500">추천 이미지를 불러오는 중이거나 결과가 없습니다.</p>}</div>; })}</div></section>}
-      {bodyParagraphs.length > 0 && paragraphImageGenerationPrompts.length > 0 && <section className="rounded-lg border border-violet-200 bg-violet-50/40 p-4"><h2 className="text-sm font-semibold text-violet-950">문단별 AI 이미지 생성</h2><p className="mt-1 text-xs text-stone-600">문단 내용에 맞춰 추천된 생성 설명입니다. 설명을 직접 다듬은 뒤 생성하면 이미지가 해당 문단 바로 뒤에 들어갑니다.</p><div className="mt-4 space-y-5">{bodyParagraphs.map((paragraph, paragraphIndex) => { const suggestion = paragraphImageGenerationPrompts.find((item) => item.paragraphIndex === paragraphIndex); if (!suggestion) return null; return <div key={`${paragraphIndex}-${suggestion.prompt}`} className="rounded-lg border border-violet-100 bg-white p-3"><p className="text-xs font-semibold text-stone-500">본문 {paragraphIndex + 1}문단</p><p className="mt-1 line-clamp-2 text-sm text-stone-700">{paragraph}</p><label className="mt-3 block text-xs font-semibold text-violet-950">GPT 이미지 2 생성 설명<textarea value={suggestion.prompt} onChange={(event) => updateParagraphImageGenerationPrompt(paragraphIndex, event.target.value)} maxLength={1000} rows={3} className="mt-2 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-normal text-stone-800" /></label><button type="button" onClick={() => generateParagraphImage(suggestion.prompt, paragraphIndex)} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-violet-700 px-4 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : `본문 ${paragraphIndex + 1}문단에 생성`}</button></div>; })}</div></section>}
+      {bodyParagraphs.length > 0 && paragraphImageGenerationPrompts.length > 0 && <section className="rounded-lg border border-violet-200 bg-violet-50/40 p-4"><h2 className="text-sm font-semibold text-violet-950">문단별 AI 이미지 생성</h2><p className="mt-1 text-xs text-stone-600">문단 내용에 맞춰 추천된 생성 설명입니다. 설명을 직접 다듬은 뒤 생성하면 이미지가 해당 문단 바로 뒤에 들어갑니다. 최대 3장까지 연달아 눌러 동시에 생성할 수 있습니다.</p>{activeImageGenerationCount > 0 && <p role="status" className="mt-3 rounded-lg bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-900">이미지 {activeImageGenerationCount}장 생성 중 · 다른 문단도 계속 선택할 수 있습니다.</p>}<div className="mt-4 space-y-5">{bodyParagraphs.map((paragraph, paragraphIndex) => { const suggestion = paragraphImageGenerationPrompts.find((item) => item.paragraphIndex === paragraphIndex); if (!suggestion) return null; return <div key={`${paragraphIndex}-${suggestion.prompt}`} className="rounded-lg border border-violet-100 bg-white p-3"><p className="text-xs font-semibold text-stone-500">본문 {paragraphIndex + 1}문단</p><p className="mt-1 line-clamp-2 text-sm text-stone-700">{paragraph}</p><label className="mt-3 block text-xs font-semibold text-violet-950">GPT 이미지 2 생성 설명<textarea value={suggestion.prompt} onChange={(event) => updateParagraphImageGenerationPrompt(paragraphIndex, event.target.value)} maxLength={1000} rows={3} className="mt-2 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-normal text-stone-800" /></label><button type="button" onClick={() => generateParagraphImage(suggestion.prompt, paragraphIndex)} disabled={activeImageGenerationCount >= maximumConcurrentImageGenerations} className="mt-3 rounded-lg border border-violet-700 px-4 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{activeImageGenerationCount >= maximumConcurrentImageGenerations ? "3장 생성 진행 중" : `본문 ${paragraphIndex + 1}문단에 생성`}</button></div>; })}</div></section>}
       {body.trim() && personalImages.length > 0 && <section className="rounded-lg border border-teal-200 bg-teal-50/40 p-4"><div><h2 className="text-sm font-semibold text-teal-950">내 사진이 포함된 본문 미리보기</h2><p className="mt-1 text-xs text-teal-800">초안 저장 및 발행 패키지 복사 시 아래와 같은 위치로 사진이 함께 들어갑니다. 위치는 아래 이미지 선택 목록에서 바꿀 수 있습니다.</p></div><div className="mt-4 space-y-4 rounded-lg bg-white p-4">{bodyPreviewSections.map((section, sectionIndex) => <div key={`${section.paragraph}-${sectionIndex}`} className="space-y-3"><p className="whitespace-pre-wrap text-sm leading-7 text-stone-800">{section.paragraph}</p>{section.images.filter((image) => image.kind === "local").map((image) => <img key={image.id} src={image.url} alt={image.alt} className="max-h-72 w-full rounded-lg object-cover" />)}</div>)}</div></section>}
       <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
         <div>
@@ -488,8 +495,8 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
             AI 이미지 생성 설명
             <textarea value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} maxLength={1000} placeholder="예: 밝은 아침 햇살의 나트랑 해변 카페 외관, 여행 매거진 사진 스타일, 글자 없음" rows={3} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
           </label>
-          <p className="mt-2 text-xs text-stone-600">AI 초안을 만들면 본문에 맞는 생성 설명이 자동 추천됩니다. 내용을 확인·수정한 뒤 생성하세요.</p>
-          <button type="button" onClick={handleImageGeneration} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : "GPT 이미지 2로 생성"}</button>
+          <p className="mt-2 text-xs text-stone-600">AI 초안을 만들면 본문에 맞는 생성 설명이 자동 추천됩니다. 인물이 필요한 장면은 한국인으로, 정보 정리 문단은 인포그래픽으로 제안합니다. 최대 3장까지 연달아 생성할 수 있습니다.</p>
+          <button type="button" onClick={handleImageGeneration} disabled={activeImageGenerationCount >= maximumConcurrentImageGenerations} className="mt-3 rounded-lg border border-rose-700 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">{activeImageGenerationCount >= maximumConcurrentImageGenerations ? "3장 생성 진행 중" : "GPT 이미지 2로 생성"}</button>
         </div>
         <div className="mt-5 border-t border-rose-100 pt-4">
           <label className="block text-sm font-semibold">
