@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { defaultWritingGuideInstructions, defaultWritingGuideTitle } from "@/lib/default-writing-guide";
 
 export type ContentGuide = {
   id: string;
@@ -11,6 +12,13 @@ export type ContentGuide = {
 };
 
 const guideColumns = "id, title, instructions, is_active, created_by, created_at, updated_at";
+
+export async function getDefaultContentGuide() {
+  const supabase = await createClient();
+  if (!supabase) return { id: null, title: defaultWritingGuideTitle, instructions: defaultWritingGuideInstructions };
+  const { data } = await supabase.from("content_guides").select(guideColumns).eq("title", defaultWritingGuideTitle).eq("is_active", true).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  return data ? { id: data.id as string, title: data.title as string, instructions: data.instructions as string } : { id: null, title: defaultWritingGuideTitle, instructions: defaultWritingGuideInstructions };
+}
 
 export async function getContentGuides(includeInactive = false) {
   const supabase = await createClient();

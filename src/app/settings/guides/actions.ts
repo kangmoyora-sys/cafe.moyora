@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentAdmin } from "@/lib/auth";
+import { defaultWritingGuideTitle } from "@/lib/default-writing-guide";
 import { createClient } from "@/lib/supabase/server";
 
 export type GuideFormState = { error?: string; success?: string };
@@ -60,4 +61,20 @@ export async function updateContentGuide(_previous: GuideFormState, formData: Fo
   revalidatePath("/settings/guides");
   revalidatePath("/content/new");
   return { success: "작성 가이드를 수정했습니다." };
+}
+
+export async function updateDefaultContentGuide(_previous: GuideFormState, formData: FormData): Promise<GuideFormState> {
+  const context = await getAdminClient();
+  if ("error" in context) return context;
+  const instructions = readText(formData, "instructions", "기본 작성 방식", 5000);
+  if ("error" in instructions) return instructions;
+
+  const { data: existing } = await context.supabase.from("content_guides").select("id").eq("title", defaultWritingGuideTitle).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  const result = existing
+    ? await context.supabase.from("content_guides").update({ instructions: instructions.value, is_active: true }).eq("id", existing.id)
+    : await context.supabase.from("content_guides").insert({ title: defaultWritingGuideTitle, instructions: instructions.value, is_active: true, created_by: context.admin.user.id });
+  if (result.error) return { error: "기본 작성 방식을 저장하지 못했습니다." };
+  revalidatePath("/settings/guides");
+  revalidatePath("/content/new");
+  return { success: "기본 작성 방식을 저장했습니다. 새 AI 초안부터 적용됩니다." };
 }

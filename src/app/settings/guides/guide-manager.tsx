@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import type { ContentGuide } from "@/lib/content-guides";
-import { createContentGuide, updateContentGuide, type GuideFormState } from "./actions";
+import { createContentGuide, updateContentGuide, updateDefaultContentGuide, type GuideFormState } from "./actions";
+import { defaultWritingGuideTitle } from "@/lib/default-writing-guide";
 
 const initialState: GuideFormState = {};
 
@@ -20,11 +21,17 @@ function CreateGuideForm() {
   return <form action={action} className="rounded-xl border border-stone-200 bg-white p-6"><h2 className="font-bold">새 작성 가이드</h2><p className="mt-1 text-sm text-stone-500">AI가 따라야 할 품질 기준을 구체적으로 작성하세요.</p><div className="mt-5"><GuideFields /></div>{state.error && <p role="alert" className="mt-4 text-sm text-red-700">{state.error}</p>}{state.success && <p role="status" className="mt-4 text-sm text-emerald-800">{state.success}</p>}<button className="mt-5 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">가이드 저장</button></form>;
 }
 
+function DefaultGuideForm({ instructions }: { instructions: string }) {
+  const [state, action] = useActionState(updateDefaultContentGuide, initialState);
+  return <form action={action} className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-6"><h2 className="font-bold text-indigo-950">기본 작성 방식</h2><p className="mt-1 text-sm text-indigo-900">가이드를 선택하지 않아도 모든 AI 초안에 적용되는 기본 문체·구성 기준입니다. 사실 확인 규칙은 별도로 항상 유지됩니다.</p><label className="mt-5 block text-sm font-semibold">기본 프롬프트<textarea name="instructions" required maxLength={5000} defaultValue={instructions} rows={14} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" /></label>{state.error && <p role="alert" className="mt-4 text-sm text-red-700">{state.error}</p>}{state.success && <p role="status" className="mt-4 text-sm text-emerald-800">{state.success}</p>}<button className="mt-5 rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-800">기본 작성 방식 저장</button></form>;
+}
+
 function EditGuideForm({ guide }: { guide: ContentGuide }) {
   const [state, action] = useActionState(updateContentGuide, initialState);
   return <details className="rounded-lg border border-stone-200 p-4"><summary className="cursor-pointer font-semibold">{guide.title} {!guide.is_active && <span className="ml-2 text-xs font-normal text-stone-500">비활성</span>}</summary><form action={action} className="mt-4"><GuideFields guide={guide} />{state.error && <p role="alert" className="mt-4 text-sm text-red-700">{state.error}</p>}{state.success && <p role="status" className="mt-4 text-sm text-emerald-800">{state.success}</p>}<button className="mt-5 rounded-lg border border-emerald-700 px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50">수정 저장</button></form></details>;
 }
 
-export function GuideManager({ guides }: { guides: ContentGuide[] }) {
-  return <div className="grid max-w-4xl gap-6"><CreateGuideForm /><section className="rounded-xl border border-stone-200 bg-white p-6"><h2 className="font-bold">저장된 작성 가이드</h2>{guides.length === 0 ? <p className="mt-2 text-sm text-stone-500">아직 저장된 가이드가 없습니다.</p> : <div className="mt-4 space-y-3">{guides.map((guide) => <EditGuideForm key={guide.id} guide={guide} />)}</div>}</section></div>;
+export function GuideManager({ guides, defaultInstructions }: { guides: ContentGuide[]; defaultInstructions: string }) {
+  const customGuides = guides.filter((guide) => guide.title !== defaultWritingGuideTitle);
+  return <div className="grid max-w-4xl gap-6"><DefaultGuideForm instructions={defaultInstructions} /><CreateGuideForm /><section className="rounded-xl border border-stone-200 bg-white p-6"><h2 className="font-bold">추가 작성 가이드</h2>{customGuides.length === 0 ? <p className="mt-2 text-sm text-stone-500">아직 저장된 추가 가이드가 없습니다.</p> : <div className="mt-4 space-y-3">{customGuides.map((guide) => <EditGuideForm key={guide.id} guide={guide} />)}</div>}</section></div>;
 }

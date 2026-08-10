@@ -6,7 +6,7 @@ import type { ContentGuide } from "@/lib/content-guides";
 import type { ContentImage } from "@/lib/content-images";
 import { makeContentSections } from "@/lib/content-image-placement";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { findPlacesFromReferences, generateAIDraft, generateContentImage, importGoogleMapsLinks, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type PexelsImage } from "./actions";
+import { findPlacesFromReferences, generateAIDraft, generateContentImage, importGoogleMapsLinks, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type ParagraphImageQuery, type PexelsImage } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -65,6 +65,8 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [imageQuery, setImageQuery] = useState("");
   const [imageSearchQueries, setImageSearchQueries] = useState<string[]>([]);
   const [imagePlacementIndexes, setImagePlacementIndexes] = useState<number[]>([]);
+  const [paragraphImageQueries, setParagraphImageQueries] = useState<ParagraphImageQuery[]>([]);
+  const [paragraphPexelsImages, setParagraphPexelsImages] = useState<Record<number, PexelsImage[]>>({});
   const [activeImagePlacement, setActiveImagePlacement] = useState<number | undefined>();
   const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<ContentImage[]>([]);
@@ -109,6 +111,9 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       setImageSearchQueries(suggestedQueries);
       const suggestedPlacements = result.imagePlacementIndexes ?? [];
       setImagePlacementIndexes(suggestedPlacements);
+      const paragraphQueries = result.paragraphImageQueries ?? [];
+      setParagraphImageQueries(paragraphQueries);
+      setParagraphPexelsImages({});
       setActiveImagePlacement(suggestedPlacements[0]);
       setImageQuery(suggestedQuery);
       setImagePrompt(result.imageGenerationPrompt ?? "");
@@ -121,6 +126,10 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
           setPexelsImages(imageResult.images);
         }
       }
+      await Promise.all(paragraphQueries.map(async ({ paragraphIndex, query }) => {
+        const imageResult = await searchPexelsImages(query);
+        if (!imageResult.error) setParagraphPexelsImages((current) => ({ ...current, [paragraphIndex]: imageResult.images }));
+      }));
       setGenerationMessage(`${result.model ?? "GPT"} 초안과 본문 기반 이미지 추천을 준비했습니다. 사실관계와 최신 정보는 반드시 검토하세요.`);
     });
   }
@@ -253,6 +262,23 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
 
   function handleImageSearch() {
     searchRecommendedImages(imageQuery.trim() || keyword.trim());
+  }
+
+  function selectParagraphImage(image: PexelsImage, paragraphIndex: number) {
+    addImage({ ...image, kind: "pexels", placement: paragraphIndex });
+  }
+
+  function searchParagraphImages(paragraphIndex: number, query: string) {
+    setImageError("");
+    startSearchingImages(async () => {
+      const result = await searchPexelsImages(query);
+      if (result.error) {
+        setImageError(result.error);
+        setParagraphPexelsImages((current) => ({ ...current, [paragraphIndex]: [] }));
+        return;
+      }
+      setParagraphPexelsImages((current) => ({ ...current, [paragraphIndex]: result.images }));
+    });
   }
 
   async function uploadImage(file: File, kind: "local" | "generated", alt: string) {
@@ -407,6 +433,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         본문
         <textarea name="body" required maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="AI 초안 생성 시 자동으로 입력됩니다. 필요하면 직접 작성할 수도 있습니다." rows={10} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
+      {bodyParagraphs.length > 0 && paragraphImageQueries.length > 0 && <section className="rounded-lg border border-rose-200 bg-rose-50/40 p-4"><h2 className="text-sm font-semibold text-rose-950">문단별 이미지 추천</h2><p className="mt-1 text-xs text-stone-600">각 문단에 어울리는 추천 이미지를 선택하면 해당 문단 바로 뒤에 삽입됩니다.</p><div className="mt-4 space-y-5">{bodyParagraphs.map((paragraph, paragraphIndex) => { const suggestion = paragraphImageQueries.find((item) => item.paragraphIndex === paragraphIndex); const images = paragraphPexelsImages[paragraphIndex] ?? []; if (!suggestion) return null; return <div key={`${paragraphIndex}-${suggestion.query}`} className="rounded-lg border border-rose-100 bg-white p-3"><p className="text-xs font-semibold text-stone-500">본문 {paragraphIndex + 1}문단</p><p className="mt-1 line-clamp-2 text-sm text-stone-700">{paragraph}</p><div className="mt-3 flex flex-wrap items-center gap-2"><span className="rounded-full bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-800">{suggestion.query}</span><button type="button" onClick={() => searchParagraphImages(paragraphIndex, suggestion.query)} disabled={isSearchingImages} className="text-xs font-bold text-rose-800 hover:underline">다시 검색</button></div>{images.length > 0 ? <div className="mt-3 grid gap-3 sm:grid-cols-3">{images.map((image) => <article key={image.id} className="overflow-hidden rounded border border-rose-100"><img src={image.url} alt={image.alt} className="h-28 w-full object-cover" /><button type="button" onClick={() => selectParagraphImage(image, paragraphIndex)} className="w-full px-2 py-2 text-xs font-bold text-rose-800 hover:bg-rose-50">이 문단에 삽입</button></article>)}</div> : <p className="mt-3 text-xs text-stone-500">추천 이미지를 불러오는 중이거나 결과가 없습니다.</p>}</div>; })}</div></section>}
       {body.trim() && personalImages.length > 0 && <section className="rounded-lg border border-teal-200 bg-teal-50/40 p-4"><div><h2 className="text-sm font-semibold text-teal-950">내 사진이 포함된 본문 미리보기</h2><p className="mt-1 text-xs text-teal-800">초안 저장 및 발행 패키지 복사 시 아래와 같은 위치로 사진이 함께 들어갑니다. 위치는 아래 이미지 선택 목록에서 바꿀 수 있습니다.</p></div><div className="mt-4 space-y-4 rounded-lg bg-white p-4">{bodyPreviewSections.map((section, sectionIndex) => <div key={`${section.paragraph}-${sectionIndex}`} className="space-y-3"><p className="whitespace-pre-wrap text-sm leading-7 text-stone-800">{section.paragraph}</p>{section.images.filter((image) => image.kind === "local").map((image) => <img key={image.id} src={image.url} alt={image.alt} className="max-h-72 w-full rounded-lg object-cover" />)}</div>)}</div></section>}
       <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
         <div>
