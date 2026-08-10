@@ -10,7 +10,8 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 
 export type DraftFormState = { error?: string };
 export type ParagraphImageQuery = { paragraphIndex: number; query: string };
-export type AIDraftResult = { error?: string; title?: string; body?: string; model?: string; imageSearchQueries?: string[]; imagePlacementIndexes?: number[]; paragraphImageQueries?: ParagraphImageQuery[]; imageGenerationPrompt?: string };
+export type ParagraphImageGenerationPrompt = { paragraphIndex: number; prompt: string };
+export type AIDraftResult = { error?: string; title?: string; body?: string; model?: string; imageSearchQueries?: string[]; imagePlacementIndexes?: number[]; paragraphImageQueries?: ParagraphImageQuery[]; paragraphImageGenerationPrompts?: ParagraphImageGenerationPrompt[]; imageGenerationPrompt?: string };
 export type NaverNewsItem = {
   title: string;
   description: string;
@@ -74,7 +75,7 @@ const defaultTravelCafeWritingInstruction = `당신은 여행 커뮤니티에서
 [출력 전 점검]
 작성 목적에 직접 기여하지 않는 문장을 삭제하고, 참고자료를 단순 요약하거나 베끼지 않았는지, 불확실한 사실을 단정하거나 만들지 않았는지, 모든 관련 장소를 빠뜨리지 않았는지, 문단과 줄바꿈이 읽기 좋은지, 문체가 홍보문·보도자료·AI 답변처럼 딱딱하지 않은지 점검하세요.
 
-응답은 제공된 JSON 형식만 사용합니다. title과 body가 최종 게시글이며, 분석·참고자료 요약·자기평가·AI 언급은 body에 넣지 마세요. 선택된 참고자료의 제목·요약에 명시된 가격, 위치, 추천 메뉴·대표 서비스는 본문에서 빠뜨리지 마세요. imageSearchQueries에는 서로 다른 본문 장면에 맞는 Pexels용 영어 검색어를 1~3개 넣고, imagePlacementIndexes에는 각 검색어와 같은 순서로 빈 줄 기준 본문 문단의 0부터 시작하는 삽입 위치를 넣으세요. paragraphImageQueries에는 본문의 각 문단마다 적합한 Pexels용 영어 검색어와 해당 문단 인덱스를 넣으세요. 이미지가 어울리지 않는 문단은 제외할 수 있습니다. imageGenerationPrompt에는 글자·로고·워터마크 없는 GPT 이미지 생성용 영어 설명을 넣으세요.`;
+응답은 제공된 JSON 형식만 사용합니다. title과 body가 최종 게시글이며, 분석·참고자료 요약·자기평가·AI 언급은 body에 넣지 마세요. 선택된 참고자료의 제목·요약에 명시된 가격, 위치, 추천 메뉴·대표 서비스는 본문에서 빠뜨리지 마세요. imageSearchQueries에는 서로 다른 본문 장면에 맞는 Pexels용 영어 검색어를 1~3개 넣고, imagePlacementIndexes에는 각 검색어와 같은 순서로 빈 줄 기준 본문 문단의 0부터 시작하는 삽입 위치를 넣으세요. paragraphImageQueries에는 본문의 각 문단마다 적합한 Pexels용 영어 검색어와 해당 문단 인덱스를 넣으세요. paragraphImageGenerationPrompts에는 본문의 모든 문단에 대해 해당 문단 내용에만 맞춘 GPT 이미지 2용 영어 생성 설명과 문단 인덱스를 넣으세요. 생성 설명에는 글자·로고·워터마크를 넣지 말고, 여행 콘텐츠 사진처럼 구체적으로 작성하세요. imageGenerationPrompt에는 글 전체를 대표하는 생성 설명을 넣으세요.`;
 
 function readRequiredText(formData: FormData, field: string, label: string, maximum: number): TextReadResult {
   const value = String(formData.get(field) ?? "").trim();
@@ -692,8 +693,8 @@ export async function recommendNaverNews(formData: FormData): Promise<NaverNewsR
 function getGeneratedContent(content: string, model: string): AIDraftResult {
   try {
     const json = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-    const parsed = JSON.parse(json) as { title?: unknown; body?: unknown; imageSearchQueries?: unknown; imagePlacementIndexes?: unknown; paragraphImageQueries?: unknown; imageGenerationPrompt?: unknown };
-    if (typeof parsed.title !== "string" || typeof parsed.body !== "string" || !Array.isArray(parsed.imageSearchQueries) || !Array.isArray(parsed.imagePlacementIndexes) || !Array.isArray(parsed.paragraphImageQueries) || typeof parsed.imageGenerationPrompt !== "string") throw new Error("Invalid response shape");
+    const parsed = JSON.parse(json) as { title?: unknown; body?: unknown; imageSearchQueries?: unknown; imagePlacementIndexes?: unknown; paragraphImageQueries?: unknown; paragraphImageGenerationPrompts?: unknown; imageGenerationPrompt?: unknown };
+    if (typeof parsed.title !== "string" || typeof parsed.body !== "string" || !Array.isArray(parsed.imageSearchQueries) || !Array.isArray(parsed.imagePlacementIndexes) || !Array.isArray(parsed.paragraphImageQueries) || !Array.isArray(parsed.paragraphImageGenerationPrompts) || typeof parsed.imageGenerationPrompt !== "string") throw new Error("Invalid response shape");
     const title = parsed.title.trim();
     const body = parsed.body.trim();
     const imageSearchQueries = [...new Set(parsed.imageSearchQueries.filter((query): query is string => typeof query === "string").map((query) => query.trim()).filter((query) => query.length > 0 && query.length <= 200))].slice(0, 3);
@@ -707,12 +708,19 @@ function getGeneratedContent(content: string, model: string): AIDraftResult {
       const query = typeof value.query === "string" ? value.query.trim() : "";
       return Number.isInteger(paragraphIndex) && typeof paragraphIndex === "number" && paragraphIndex >= 0 && paragraphIndex < paragraphCount && query.length > 0 && query.length <= 200 ? [{ paragraphIndex, query }] : [];
     }).filter((item, index, items) => items.findIndex((candidate) => candidate.paragraphIndex === item.paragraphIndex) === index).slice(0, 12);
+    const paragraphImageGenerationPrompts = parsed.paragraphImageGenerationPrompts.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as Record<string, unknown>;
+      const paragraphIndex = value.paragraphIndex;
+      const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
+      return Number.isInteger(paragraphIndex) && typeof paragraphIndex === "number" && paragraphIndex >= 0 && paragraphIndex < paragraphCount && prompt.length > 0 && prompt.length <= 1000 ? [{ paragraphIndex, prompt }] : [];
+    }).filter((item, index, items) => items.findIndex((candidate) => candidate.paragraphIndex === item.paragraphIndex) === index).slice(0, 12);
     const imageGenerationPrompt = parsed.imageGenerationPrompt.trim();
     if (!title || title.length > 200 || !body || body.length > 10000) throw new Error("Invalid content length");
     if (imageSearchQueries.length === 0 || !imageGenerationPrompt || imageGenerationPrompt.length > 1000) throw new Error("Invalid image suggestions");
     const googleMapUrls = body.match(/https?:\/\/[^\s\])>]+/gi)?.filter((url) => /(?:maps\.google\.com|google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)/i.test(url)) ?? [];
     if (googleMapUrls.length > 0) return { error: "지도 링크 대신 주소만 표시해야 합니다. 초안을 다시 생성해 주세요." };
-    return { title, body, model, imageSearchQueries, imagePlacementIndexes, paragraphImageQueries, imageGenerationPrompt };
+    return { title, body, model, imageSearchQueries, imagePlacementIndexes, paragraphImageQueries, paragraphImageGenerationPrompts, imageGenerationPrompt };
   } catch {
     return { error: "AI 응답을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
   }

@@ -6,7 +6,7 @@ import type { ContentGuide } from "@/lib/content-guides";
 import type { ContentImage } from "@/lib/content-images";
 import { makeContentSections } from "@/lib/content-image-placement";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { findPlacesFromReferences, generateAIDraft, generateContentImage, importGoogleMapsLinks, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type ParagraphImageQuery, type PexelsImage } from "./actions";
+import { findPlacesFromReferences, generateAIDraft, generateContentImage, importGoogleMapsLinks, recommendNaverNews, saveDraft, searchGooglePlaces, searchNaverNews, searchPexelsImages, type DraftFormState, type GooglePlace, type NaverNewsItem, type NaverNewsRecommendation, type ParagraphImageGenerationPrompt, type ParagraphImageQuery, type PexelsImage } from "./actions";
 
 const initialState: DraftFormState = {};
 
@@ -66,6 +66,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [imageSearchQueries, setImageSearchQueries] = useState<string[]>([]);
   const [imagePlacementIndexes, setImagePlacementIndexes] = useState<number[]>([]);
   const [paragraphImageQueries, setParagraphImageQueries] = useState<ParagraphImageQuery[]>([]);
+  const [paragraphImageGenerationPrompts, setParagraphImageGenerationPrompts] = useState<ParagraphImageGenerationPrompt[]>([]);
   const [paragraphPexelsImages, setParagraphPexelsImages] = useState<Record<number, PexelsImage[]>>({});
   const [activeImagePlacement, setActiveImagePlacement] = useState<number | undefined>();
   const [pexelsImages, setPexelsImages] = useState<PexelsImage[]>([]);
@@ -113,6 +114,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       setImagePlacementIndexes(suggestedPlacements);
       const paragraphQueries = result.paragraphImageQueries ?? [];
       setParagraphImageQueries(paragraphQueries);
+      setParagraphImageGenerationPrompts(result.paragraphImageGenerationPrompts ?? []);
       setParagraphPexelsImages({});
       setActiveImagePlacement(suggestedPlacements[0]);
       setImageQuery(suggestedQuery);
@@ -281,7 +283,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     });
   }
 
-  async function uploadImage(file: File, kind: "local" | "generated", alt: string) {
+  async function uploadImage(file: File, kind: "local" | "generated", alt: string, placement?: number) {
     if (!file.type || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setImageError("JPG, PNG, WebP 이미지만 추가할 수 있습니다.");
       return;
@@ -304,7 +306,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       if (uploadError) throw new Error("이미지 저장소에 업로드하지 못했습니다.");
       const { data } = supabase.storage.from("content-images").getPublicUrl(path);
       if (!data.publicUrl.startsWith("https://")) throw new Error("이미지 주소를 만들지 못했습니다.");
-      addImage({ id: imageId, kind, url: data.publicUrl, alt: alt.trim().slice(0, 300) || "콘텐츠 이미지" });
+      addImage({ id: imageId, kind, url: data.publicUrl, alt: alt.trim().slice(0, 300) || "콘텐츠 이미지", placement });
     } catch (error) {
       setImageError(error instanceof Error ? error.message : "이미지를 추가하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
@@ -323,6 +325,28 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       const response = await fetch(result.image.dataUrl);
       const blob = await response.blob();
       await uploadImage(new File([blob], "generated-image.png", { type: "image/png" }), "generated", result.image.alt);
+    });
+  }
+
+  function updateParagraphImageGenerationPrompt(paragraphIndex: number, prompt: string) {
+    setParagraphImageGenerationPrompts((current) => current.map((item) => item.paragraphIndex === paragraphIndex ? { ...item, prompt } : item));
+  }
+
+  function generateParagraphImage(prompt: string, paragraphIndex: number) {
+    setImageError("");
+    if (!prompt.trim()) {
+      setImageError("이미지 생성 설명을 입력해 주세요.");
+      return;
+    }
+    startGeneratingImage(async () => {
+      const result = await generateContentImage(prompt);
+      if (result.error || !result.image) {
+        setImageError(result.error ?? "AI 생성 이미지를 처리하지 못했습니다.");
+        return;
+      }
+      const response = await fetch(result.image.dataUrl);
+      const blob = await response.blob();
+      await uploadImage(new File([blob], "generated-image.png", { type: "image/png" }), "generated", result.image.alt, paragraphIndex);
     });
   }
 
@@ -434,6 +458,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         <textarea name="body" required maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="AI 초안 생성 시 자동으로 입력됩니다. 필요하면 직접 작성할 수도 있습니다." rows={10} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
       {bodyParagraphs.length > 0 && paragraphImageQueries.length > 0 && <section className="rounded-lg border border-rose-200 bg-rose-50/40 p-4"><h2 className="text-sm font-semibold text-rose-950">문단별 이미지 추천</h2><p className="mt-1 text-xs text-stone-600">각 문단에 어울리는 추천 이미지를 선택하면 해당 문단 바로 뒤에 삽입됩니다.</p><div className="mt-4 space-y-5">{bodyParagraphs.map((paragraph, paragraphIndex) => { const suggestion = paragraphImageQueries.find((item) => item.paragraphIndex === paragraphIndex); const images = paragraphPexelsImages[paragraphIndex] ?? []; if (!suggestion) return null; return <div key={`${paragraphIndex}-${suggestion.query}`} className="rounded-lg border border-rose-100 bg-white p-3"><p className="text-xs font-semibold text-stone-500">본문 {paragraphIndex + 1}문단</p><p className="mt-1 line-clamp-2 text-sm text-stone-700">{paragraph}</p><div className="mt-3 flex flex-wrap items-center gap-2"><span className="rounded-full bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-800">{suggestion.query}</span><button type="button" onClick={() => searchParagraphImages(paragraphIndex, suggestion.query)} disabled={isSearchingImages} className="text-xs font-bold text-rose-800 hover:underline">다시 검색</button></div>{images.length > 0 ? <div className="mt-3 grid gap-3 sm:grid-cols-3">{images.map((image) => <article key={image.id} className="overflow-hidden rounded border border-rose-100"><img src={image.url} alt={image.alt} className="h-28 w-full object-cover" /><button type="button" onClick={() => selectParagraphImage(image, paragraphIndex)} className="w-full px-2 py-2 text-xs font-bold text-rose-800 hover:bg-rose-50">이 문단에 삽입</button></article>)}</div> : <p className="mt-3 text-xs text-stone-500">추천 이미지를 불러오는 중이거나 결과가 없습니다.</p>}</div>; })}</div></section>}
+      {bodyParagraphs.length > 0 && paragraphImageGenerationPrompts.length > 0 && <section className="rounded-lg border border-violet-200 bg-violet-50/40 p-4"><h2 className="text-sm font-semibold text-violet-950">문단별 AI 이미지 생성</h2><p className="mt-1 text-xs text-stone-600">문단 내용에 맞춰 추천된 생성 설명입니다. 설명을 직접 다듬은 뒤 생성하면 이미지가 해당 문단 바로 뒤에 들어갑니다.</p><div className="mt-4 space-y-5">{bodyParagraphs.map((paragraph, paragraphIndex) => { const suggestion = paragraphImageGenerationPrompts.find((item) => item.paragraphIndex === paragraphIndex); if (!suggestion) return null; return <div key={`${paragraphIndex}-${suggestion.prompt}`} className="rounded-lg border border-violet-100 bg-white p-3"><p className="text-xs font-semibold text-stone-500">본문 {paragraphIndex + 1}문단</p><p className="mt-1 line-clamp-2 text-sm text-stone-700">{paragraph}</p><label className="mt-3 block text-xs font-semibold text-violet-950">GPT 이미지 2 생성 설명<textarea value={suggestion.prompt} onChange={(event) => updateParagraphImageGenerationPrompt(paragraphIndex, event.target.value)} maxLength={1000} rows={3} className="mt-2 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-normal text-stone-800" /></label><button type="button" onClick={() => generateParagraphImage(suggestion.prompt, paragraphIndex)} disabled={isGeneratingImage || isUploadingImage} className="mt-3 rounded-lg border border-violet-700 px-4 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isGeneratingImage || isUploadingImage ? "이미지 준비 중…" : `본문 ${paragraphIndex + 1}문단에 생성`}</button></div>; })}</div></section>}
       {body.trim() && personalImages.length > 0 && <section className="rounded-lg border border-teal-200 bg-teal-50/40 p-4"><div><h2 className="text-sm font-semibold text-teal-950">내 사진이 포함된 본문 미리보기</h2><p className="mt-1 text-xs text-teal-800">초안 저장 및 발행 패키지 복사 시 아래와 같은 위치로 사진이 함께 들어갑니다. 위치는 아래 이미지 선택 목록에서 바꿀 수 있습니다.</p></div><div className="mt-4 space-y-4 rounded-lg bg-white p-4">{bodyPreviewSections.map((section, sectionIndex) => <div key={`${section.paragraph}-${sectionIndex}`} className="space-y-3"><p className="whitespace-pre-wrap text-sm leading-7 text-stone-800">{section.paragraph}</p>{section.images.filter((image) => image.kind === "local").map((image) => <img key={image.id} src={image.url} alt={image.alt} className="max-h-72 w-full rounded-lg object-cover" />)}</div>)}</div></section>}
       <section className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
         <div>
