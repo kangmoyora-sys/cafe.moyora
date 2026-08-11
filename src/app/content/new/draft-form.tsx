@@ -443,9 +443,9 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
       </fieldset>
       <section className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-4">
         <label className="block text-sm font-semibold">
-          작성 가이드
+          추가 작성 가이드 <span className="font-normal text-stone-500">(선택)</span>
           <select name="writingGuideId" value={writingGuideId} onChange={(event) => setWritingGuideId(event.target.value)} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5">
-            <option value="">기본 작성 방식 사용</option>
+            <option value="">추가 가이드 없이 기본 작성 방식만 사용</option>
             {guides.map((guide) => <option key={guide.id} value={guide.id}>{guide.title}</option>)}
           </select>
         </label>
@@ -453,7 +453,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
           이번 글의 추가 지시 <span className="font-normal text-stone-500">(선택)</span>
           <textarea name="writingGuideNotes" maxLength={2000} value={writingGuideNotes} onChange={(event) => setWritingGuideNotes(event.target.value)} placeholder="예: 초보자도 바로 실행할 수 있도록 체크리스트를 포함해 주세요." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" />
         </label>
-        <p className="mt-2 text-xs text-stone-600">선택한 가이드는 AI 초안 생성과 저장되는 초안에 함께 적용됩니다. 가이드는 관리자 화면에서 관리할 수 있습니다.</p>
+        <p className="mt-2 text-xs text-stone-600">기본 작성 방식은 항상 적용됩니다. 여기서 고르는 가이드와 이번 글의 추가 지시는 말투·분위기·구성·강조점처럼 작성자의 개성을 더합니다.</p>
       </section>
       <section className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
         <label className="block text-sm font-semibold">

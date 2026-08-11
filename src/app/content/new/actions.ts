@@ -95,17 +95,22 @@ async function readWritingGuide(formData: FormData): Promise<WritingGuideResult>
   const guideId = String(formData.get("writingGuideId") ?? "").trim();
   const extra = readOptionalText(formData, "writingGuideNotes", "추가 작성 지시", 2000);
   if ("error" in extra) return { error: extra.error };
+  const defaultGuide = await getDefaultContentGuide();
+  let additionalInstructions = extra.value;
+  let selectedGuideId = defaultGuide.id;
+  let selectedGuideTitle = defaultGuide.title;
 
-  if (!guideId) {
-    const defaultGuide = await getDefaultContentGuide();
-    return { value: { id: defaultGuide.id, title: defaultGuide.title, instructions: extra.value ? `${defaultGuide.instructions}\n\n이번 글의 추가 지시:\n${extra.value}` : defaultGuide.instructions } };
+  if (guideId) {
+    const guide = await getActiveContentGuide(guideId);
+    if (!guide) return { error: "선택한 작성 가이드를 찾을 수 없거나 현재 사용할 수 없습니다." };
+    additionalInstructions = [guide.instructions, extra.value].filter(Boolean).join("\n\n이번 글의 추가 지시:\n");
+    selectedGuideId = guide.id;
+    selectedGuideTitle = `${defaultGuide.title} + ${guide.title}`;
   }
 
-  const guide = await getActiveContentGuide(guideId);
-  if (!guide) return { error: "선택한 작성 가이드를 찾을 수 없거나 현재 사용할 수 없습니다." };
-  const instructions = extra.value ? `${guide.instructions}\n\n이번 글의 추가 지시:\n${extra.value}` : guide.instructions;
-  if (instructions.length > 5000) return { error: "선택한 가이드와 추가 지시의 합계는 5000자 이내여야 합니다." };
-  return { value: { id: guide.id, title: guide.title, instructions } };
+  const instructions = additionalInstructions ? `${defaultGuide.instructions}\n\n[추가 작성 가이드 — 문체·구성·강조점에만 적용]\n${additionalInstructions}` : defaultGuide.instructions;
+  if (instructions.length > 7000) return { error: "기본 작성 방식과 추가 가이드의 합계는 7000자 이내여야 합니다." };
+  return { value: { id: selectedGuideId, title: selectedGuideTitle, instructions } };
 }
 
 export async function saveDraft(_previousState: DraftFormState, formData: FormData): Promise<DraftFormState> {
