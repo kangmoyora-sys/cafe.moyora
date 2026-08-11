@@ -468,6 +468,11 @@ function formatBlogDate(value: string) {
   return /^\d{8}$/.test(value) ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : value.slice(0, 100);
 }
 
+function getResearchSearchQuery(keyword: string) {
+  const normalized = keyword.replace(/\btop\s*\d+\b/gi, " ").replace(/\s+/g, " ").trim();
+  return normalized || keyword;
+}
+
 export async function searchNaverNews(keyword: string, source: NaverResearchSource = "auto"): Promise<NaverNewsSearchResult> {
   const user = await getCurrentUser();
   if (!user) return { items: [], error: "로그인 후 참고자료 검색을 이용해 주세요." };
@@ -484,7 +489,8 @@ export async function searchNaverNews(keyword: string, source: NaverResearchSour
 
   try {
     const selectedSource = chooseResearchSource(query, source);
-    const response = await fetch(`https://openapi.naver.com/v1/search/${selectedSource}.json?query=${encodeURIComponent(query)}&display=10&sort=${selectedSource === "news" ? "date" : "sim"}`, {
+    const researchQuery = getResearchSearchQuery(query);
+    const response = await fetch(`https://openapi.naver.com/v1/search/${selectedSource}.json?query=${encodeURIComponent(researchQuery)}&display=10&sort=${selectedSource === "news" ? "date" : "sim"}`, {
       headers: {
         "X-Naver-Client-Id": process.env.NAVER_SEARCH_CLIENT_ID,
         "X-Naver-Client-Secret": process.env.NAVER_SEARCH_CLIENT_SECRET,
