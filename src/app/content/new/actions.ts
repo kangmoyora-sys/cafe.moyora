@@ -283,18 +283,55 @@ function readDirectReferenceUrls(formData: FormData): string[] | { error: string
   return urls;
 }
 
+async function fetchPublicReferenceResponse(url: string, redirectCount = 0): Promise<Response> {
+  const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(7000), headers: { "User-Agent": "MoyoraCafeStudio/1.0 reference reader" } });
+  if (response.status < 300 || response.status >= 400) return response;
+  if (redirectCount >= 2) throw new Error("too many redirects");
+  const location = response.headers.get("location");
+  if (!location) throw new Error("redirect without location");
+  const redirectedUrl = new URL(location, url).toString();
+  if (!isPublicReferenceUrl(redirectedUrl)) throw new Error("unsafe redirect");
+  return fetchPublicReferenceResponse(redirectedUrl, redirectCount + 1);
+}
+
+function readNaverBlogFrameUrl(html: string, pageUrl: string) {
+  const host = new URL(pageUrl).hostname.toLowerCase();
+  if (host !== "blog.naver.com" && host !== "m.blog.naver.com") return null;
+  const frameMatch = html.match(/<iframe[^>]+(?:id|name)=["']mainFrame["'][^>]+src=["']([^"']+)["'][^>]*>/i)
+    ?? html.match(/<iframe[^>]+src=["']([^"']+)["'][^>]+(?:id|name)=["']mainFrame["'][^>]*>/i);
+  if (!frameMatch?.[1]) return null;
+  try {
+    const frameUrl = new URL(decodeHtml(frameMatch[1]), pageUrl).toString();
+    const frameHost = new URL(frameUrl).hostname.toLowerCase();
+    return (frameHost === "blog.naver.com" || frameHost === "m.blog.naver.com") && isPublicReferenceUrl(frameUrl) ? frameUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchDirectReference(url: string): Promise<DirectReference> {
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(7000), headers: { "User-Agent": "MoyoraCafeStudio/1.0 reference reader" } });
+  const response = await fetchPublicReferenceResponse(url);
   if (!response.ok) throw new Error("reference fetch failed");
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html")) throw new Error("not html");
   const contentLength = Number(response.headers.get("content-length") ?? "0");
   if (Number.isFinite(contentLength) && contentLength > 1_000_000) throw new Error("reference too large");
-  const html = (await response.text()).slice(0, 250_000);
+  const outerHtml = (await response.text()).slice(0, 250_000);
+  const frameUrl = readNaverBlogFrameUrl(outerHtml, response.url || url);
+  let html = outerHtml;
+  if (frameUrl) {
+    try {
+      const frameResponse = await fetchPublicReferenceResponse(frameUrl);
+      const frameContentType = frameResponse.headers.get("content-type") ?? "";
+      if (frameResponse.ok && frameContentType.includes("text/html")) html = (await frameResponse.text()).slice(0, 250_000);
+    } catch {
+      // Fall back to the public outer page when a blog post frame cannot be read.
+    }
+  }
   const documentTitle = decodeHtml((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").replace(/<[^>]*>/g, " ").trim());
   const title = (readMetaContent(html, ["og:title", "twitter:title"]) || documentTitle || new URL(url).hostname).slice(0, 300);
   const description = readMetaContent(html, ["og:description", "description", "twitter:description"]);
-  const bodyText = stripHtmlToText(html).slice(0, 4000);
+  const bodyText = stripHtmlToText(html).slice(0, 5000);
   const summary = [description, bodyText].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" ").slice(0, 4000);
   return { url, title, summary };
 }
