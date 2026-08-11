@@ -53,7 +53,6 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
   const [title, setTitle] = useState("");
   const [keyword, setKeyword] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [readerProfile, setReaderProfile] = useState("");
   const [contentAngle, setContentAngle] = useState("");
   const [personalNotes, setPersonalNotes] = useState("");
   const [externalReferenceUrls, setExternalReferenceUrls] = useState("");
@@ -88,7 +87,6 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     const formData = new FormData();
     formData.set("keyword", keyword);
     formData.set("purpose", purpose);
-    formData.set("readerProfile", readerProfile);
     formData.set("contentAngle", contentAngle);
     formData.set("length", length);
     formData.set("tone", tone);
@@ -161,7 +159,6 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
     const formData = new FormData();
     formData.set("keyword", keyword);
     formData.set("purpose", purpose);
-    formData.set("readerProfile", readerProfile);
     formData.set("contentAngle", contentAngle);
     formData.set("writingGuideId", writingGuideId);
     formData.set("writingGuideNotes", writingGuideNotes);
@@ -380,13 +377,11 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         <input name="keyword" required maxLength={100} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="예: 여름 가족여행" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
       </label>
       <label className="block text-sm font-semibold">
-        작성 목적
-        <textarea name="purpose" required maxLength={1000} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="이 글을 읽은 사람이 무엇을 알거나 결정하면 좋은지 입력하세요." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+        글 방향
+        <textarea name="purpose" required maxLength={1000} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="예: 처음 다낭에 가는 가족에게 바나힐 입장권·식사·이동 선택 기준을 쉽게 전달" rows={3} className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+        <span className="mt-1 block text-xs font-normal text-stone-500">무엇을 전달할지와 누구를 위한 글인지 한 문장으로 적어 주세요.</span>
       </label>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm font-semibold">대상 독자 <span className="font-normal text-stone-500">(선택)</span><input value={readerProfile} onChange={(event) => setReaderProfile(event.target.value)} maxLength={500} placeholder="예: 처음 나트랑에 가는 아이 동반 가족" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
-        <label className="block text-sm font-semibold">기획 조건 <span className="font-normal text-stone-500">(선택)</span><input value={contentAngle} onChange={(event) => setContentAngle(event.target.value)} maxLength={1000} placeholder="예: 1인 2만원대, 시내 중심, 이동 동선 고려" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
-      </div>
+      <label className="block text-sm font-semibold">기획 조건 <span className="font-normal text-stone-500">(선택)</span><input value={contentAngle} onChange={(event) => setContentAngle(event.target.value)} maxLength={1000} placeholder="예: 1인 2만원대, 시내 중심, 이동 동선 고려" className="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2.5" /></label>
       <section className="rounded-lg border border-teal-100 bg-teal-50/50 p-4">
         <div><h2 className="text-sm font-semibold">내 자료 첨부 <span className="font-normal text-stone-500">(선택)</span></h2><p className="mt-1 text-xs leading-5 text-stone-600">직접 다녀온 경험, 사진, 장소 링크, 다른 블로그·뉴스 링크를 함께 주면 AI가 자동 검색 자료보다 우선해 글의 근거로 사용합니다.</p></div>
         <label className="mt-4 block text-sm font-semibold">내 여행 메모<textarea name="personalNotes" value={personalNotes} onChange={(event) => setPersonalNotes(event.target.value)} maxLength={4000} placeholder="예: 아이와 오전 10시에 방문했고, 대기 없이 들어갔어요. 바다 쪽 좌석이 좋았지만 햇빛이 강했습니다." rows={4} className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5" /></label>
@@ -403,7 +398,7 @@ export function DraftForm({ guides, textModels }: { guides: ContentGuide[]; text
         </div>
         <fieldset className="mt-3 flex flex-wrap gap-3 text-sm"><legend className="sr-only">참고자료 종류</legend><label><input type="radio" name="researchSource" value="auto" checked={researchSource === "auto"} onChange={() => setResearchSource("auto")} /> 자동 선택</label><label><input type="radio" name="researchSource" value="blog" checked={researchSource === "blog"} onChange={() => setResearchSource("blog")} /> 블로그 후기</label><label><input type="radio" name="researchSource" value="news" checked={researchSource === "news"} onChange={() => setResearchSource("news")} /> 최신 뉴스</label></fieldset>
         {newsError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{newsError}</p>}
-        {newsItems.length >= 3 && <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-violet-950">작성 목적과 가이드를 기준으로 AI가 가장 쓸모 있는 참고자료 3개를 추천하고 자동 선택합니다.</p><button type="button" onClick={handleNewsRecommendation} disabled={isRecommendingNews} className="rounded-lg border border-violet-700 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isRecommendingNews ? "AI 추천 중…" : "AI 추천 받고 자동 선택"}</button></div>{newsRecommendationError && <p role="alert" className="mt-3 text-sm text-red-700">{newsRecommendationError}</p>}{newsRecommendations.length > 0 && <ul className="mt-3 space-y-2 text-sm text-violet-950">{newsRecommendations.map((recommendation, index) => { const item = newsItems.find((newsItem) => newsItem.sourceUrl === recommendation.sourceUrl); return item ? <li key={recommendation.sourceUrl} className="rounded bg-white p-3"><strong>{index + 1}. {item.title}</strong><p className="mt-1 text-violet-800">추천 이유: {recommendation.reason}</p></li> : null; })}</ul>}</div>}
+        {newsItems.length >= 3 && <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-violet-950">글 방향과 가이드를 기준으로 AI가 가장 쓸모 있는 참고자료 3개를 추천하고 자동 선택합니다.</p><button type="button" onClick={handleNewsRecommendation} disabled={isRecommendingNews} className="rounded-lg border border-violet-700 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60">{isRecommendingNews ? "AI 추천 중…" : "AI 추천 받고 자동 선택"}</button></div>{newsRecommendationError && <p role="alert" className="mt-3 text-sm text-red-700">{newsRecommendationError}</p>}{newsRecommendations.length > 0 && <ul className="mt-3 space-y-2 text-sm text-violet-950">{newsRecommendations.map((recommendation, index) => { const item = newsItems.find((newsItem) => newsItem.sourceUrl === recommendation.sourceUrl); return item ? <li key={recommendation.sourceUrl} className="rounded bg-white p-3"><strong>{index + 1}. {item.title}</strong><p className="mt-1 text-violet-800">추천 이유: {recommendation.reason}</p></li> : null; })}</ul>}</div>}
         {newsItems.length > 0 && <div className="mt-4 space-y-3">{newsItems.map((item) => <label key={item.sourceUrl} className="block cursor-pointer rounded-lg border border-sky-100 bg-white p-3"><div className="flex gap-3"><input type="checkbox" checked={selectedNewsUrls.includes(item.sourceUrl)} onChange={() => toggleNewsSelection(item.sourceUrl)} className="mt-1" /><span><span className="mr-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">{item.sourceType === "blog" ? "블로그 후기" : "최신 뉴스"}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="font-semibold text-sky-800 hover:underline">{item.title}</a><span className="ml-2 text-xs text-stone-500">{item.publishedAt}</span><p className="mt-1 text-sm text-stone-600">{item.description}</p></span></div></label>)}</div>}
       </section>
       <section className="rounded-lg border border-amber-100 bg-amber-50/50 p-4">
